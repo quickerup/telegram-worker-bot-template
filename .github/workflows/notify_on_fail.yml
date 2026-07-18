@@ -1,0 +1,25 @@
+name: Global Failure Notification
+on:
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+jobs:
+  notify-failure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - name: Send Telegram Alert
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          REPO: ${{ github.repository }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"chat_id\": \"7952819982\",
+              \"text\": \"❌ <b>GitHub Action Failed!</b>\n\n<b>Repo:</b> ${REPO}\n<b>Workflow:</b> ${WORKFLOW_NAME}\n<a href='${URL}'>View Failed Run</a>\",
+              \"parse_mode\": \"HTML\",
+              \"disable_web_page_preview\": true
+            }"
