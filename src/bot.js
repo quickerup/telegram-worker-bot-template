@@ -1,3 +1,5 @@
+import nacl from 'tweetnacl';
+
 const telegramApi = (token) => `https://api.telegram.org/bot${token}`;
 
 export async function sendMessage(env, chatId, text, extra = {}) {
@@ -122,7 +124,70 @@ const commands = {
         return sendMessage(env, msg.chat.id, `❌ Failed to commit to GitHub: ${await ghRes.text()}`);
       }
 
-      await sendMessage(env, msg.chat.id, `✅ Success! Workflow \`${filename}\` has been committed to \`${repo}\`.`);
+      await sendMessage(env, msg.chat.id, `✅ Workflow \`${filename}\` committed! Seeding Cloudflare secrets into \`${repo}\`...`);
+
+      if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ACCOUNT_ID) {
+        return sendMessage(env, msg.chat.id, `⚠️ Done, but CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not set in bot env — add them manually to \`${repo}\` secrets.`);
+      }
+
+      // Fetch the repo's public key needed to encrypt secrets for the GitHub API
+      const pubKeyRes = await fetch(`https://api.github.com/repos/${repo}/actions/secrets/public-key`, {
+        headers: {
+          "Authorization": `Bearer ${env.GHPAT}`,
+          "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+          "Accept": "application/vnd.github.v3+json"
+        }
+      });
+
+      if (!pubKeyRes.ok) {
+        return sendMessage(env, msg.chat.id, `⚠️ Workflow committed but couldn't fetch repo public key: ${await pubKeyRes.text()}`);
+      }
+
+      const { key: repoPublicKey, key_id } = await pubKeyRes.json();
+
+      // Encrypt a secret value using the repo's public key via tweetnacl sealed box
+      function encryptSecret(secretValue) {
+        const repoKeyBytes = Uint8Array.from(atob(repoPublicKey), c => c.charCodeAt(0));
+        const secretBytes = new TextEncoder().encode(secretValue);
+        // Generate ephemeral keypair
+        const ephemeralKeypair = nacl.box.keyPair();
+        // Compute shared key
+        const sharedKey = nacl.box.before(repoKeyBytes, ephemeralKeypair.secretKey);
+        // Encrypt: nonce + box
+        const nonce = nacl.randomBytes(nacl.box.nonceLength);
+        const encrypted = nacl.box.after(secretBytes, nonce, sharedKey);
+        // Sealed box format: ephemeral public key || nonce || encrypted
+        const combined = new Uint8Array(ephemeralKeypair.publicKey.length + nonce.length + encrypted.length);
+        combined.set(ephemeralKeypair.publicKey, 0);
+        combined.set(nonce, ephemeralKeypair.publicKey.length);
+        combined.set(encrypted, ephemeralKeypair.publicKey.length + nonce.length);
+        return btoa(String.fromCharCode(...combined));
+      }
+
+      // Push each secret to the target repo
+      async function pushSecret(name, value) {
+        const encrypted = encryptSecret(value);
+        const r = await fetch(`https://api.github.com/repos/${repo}/actions/secrets/${name}`, {
+          method: "PUT",
+          headers: {
+            "Authorization": `Bearer ${env.GHPAT}`,
+            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ encrypted_value: encrypted, key_id })
+        });
+        return r.ok ? `✅ ${name}` : `❌ ${name} (${r.status})`;
+      }
+
+      const results = await Promise.all([
+        pushSecret("CLOUDFLARE_API_TOKEN", env.CLOUDFLARE_API_TOKEN),
+        pushSecret("CLOUDFLARE_ACCOUNT_ID", env.CLOUDFLARE_ACCOUNT_ID),
+      ]);
+
+      await sendMessage(env, msg.chat.id,
+        `🔑 Secrets pushed to \`${repo}\`:\n${results.join('\n')}\n\nYour workflow is ready to deploy to Cloudflare! 🚀`
+      );
 
     } catch (e) {
       await sendMessage(env, msg.chat.id, `❌ Error: ${e.message}`);
