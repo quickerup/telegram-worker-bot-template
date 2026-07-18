@@ -228,7 +228,7 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
         {
           reply_markup: {
             inline_keyboard: [[
-              { text: "🚀 Trigger Workflow", callback_data: `trig:${repo}:${filename}`.substring(0, 64) }
+              { text: "🚀 Trigger Workflow", callback_data: `trig:${repo}:${filename}` }
             ]]
           }
         }
@@ -252,7 +252,9 @@ export async function handleUpdate(update, env) {
     
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
     if (cb.data && cb.data.startsWith('trig:')) {
-      const [, repo, workflow] = cb.data.split(':');
+      const match = cb.data.match(/^trig:([^:]+\/[^:]+):(.+)$/);
+      if (!match) return;
+      const [, repo, workflow] = match;
       const fakeMsg = {
         chat: cb.message.chat,
         from: cb.from,
