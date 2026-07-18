@@ -1,0 +1,15 @@
+name: Baseline Ping Test
+on:
+  workflow_dispatch:
+env:
+  TELEGRAM_WORKER_URL: ${{ secrets.TELEGRAM_WORKER_URL }}
+jobs:
+  ping-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test Connection
+      run: |
+        curl -X POST \
+        ${TELEGRAM_WORKER_URL} \
+        -H 'Content-Type: application/json' \
+        -d '{}'
