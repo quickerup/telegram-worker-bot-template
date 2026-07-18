@@ -1,0 +1,27 @@
+name: Auto Error Reporter
+on:
+  workflow_run:
+    types: [completed]
+jobs:
+  error-reporter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check workflow conclusion
+        run: |
+          if [ "${GITHUB_WORKFLOW}" != "Auto Error Reporter" ] && [ "${GITHUB_EVENT_NAME}" == "workflow_run" ] && [ "${GITHUB_ACTIONS_WORKFLOW_CONCLUSION}" == "failure" ]; then
+            echo "Workflow failed, reporting error..."
+          else
+            echo "Workflow did not fail or is the reporter itself, exiting..."
+            exit 0
+          fi
+      - name: Get failed job logs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          LOGS=$(curl -s -X GET \
+          https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Content-Type: application/json")
+          FAILED_JOB_ID=$(echo ${LOGS} | jq -r '.
