@@ -267,6 +267,7 @@ const commands = {
                   '  workflow_dispatch:',
                   '  workflow_run:   # or push, schedule, etc',
                   '    ...',
+                  'ALWAYS create a GitHub issue if any job in the workflow fails. Add `issues: write` permissions and a final job or step that runs on failure with `if: failure()` or `if: ${{ failure() }}` and uses the GitHub CLI or API to create a new issue for that failed run.',
                   '',
                   'ADDITIONAL RULES:',
                   '1. File Transfer: Use cpina/github-action-push-to-another-repository, not raw git commands.',
