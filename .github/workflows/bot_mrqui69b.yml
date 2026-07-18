@@ -1,0 +1,14 @@
+name: My Custom Workflow
+on:
+  workflow_dispatch:
+jobs:
+  my-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping
+        run: echo "Hello world"
+      - name: Send Message Back
+        run: |
+          curl -X POST "${{ secrets.TELEGRAM_WORKER_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"message": "Custom workflow completed successfully!"}'
