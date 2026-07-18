@@ -3,18 +3,8 @@ name: Global Failure Issue Reporter
 on:
   workflow_run:
     workflows:
-      - Baseline Ping Test
-      - Victory Ping
-      - Telegram Test Button
-      - Main Bot Ping Test
-      - Update Bot Menu Layout
       - Deploy Telegram Bot
-      - Map Signal Network Trace
-      - My Custom Workflow
-      - Bot Ping
-      - Update Bot Worker Routing Code
-      - Send Telegram Message
-      - Deployment
+      - List Actions
     types: [completed]
 
 permissions:
