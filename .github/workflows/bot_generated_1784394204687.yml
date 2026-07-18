@@ -1,0 +1,32 @@
+name: Deploy Sandbox Clone
+on:
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create new private repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: bot-sandbox
+        run: |
+          curl -X POST \
+          https://api.github.com/user/repos \
+          -H 'Authorization: Bearer $GITHUB_TOKEN' \
+          -H 'Content-Type: application/json' \
+          -d '{"name":"$REPO_NAME","private":true}'
+      - name: Initialize and push to new repo
+        run: |
+          git init
+          git remote add origin https://x-access-token:$GITHUB_TOKEN@github.com/$GITHUB_ACTOR/bot-sandbox.git
+          git add .
+          git commit -m "Initial commit"
+          git push -u origin master
+      - name: Set repo visibility to private
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: bot-sandbox
+        run: |
+          curl -X PATCH \
+          https://api.github.com/repos/$GITHUB_ACTOR/$REPO_NAME \
+          -H 'Authorization: B
