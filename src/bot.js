@@ -93,7 +93,29 @@ const commands = {
             messages: [
               {
                 role: 'system',
-                content: 'You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user\'s request. Do not use markdown formatting like ```yaml, just output the raw text. Do not add any conversational text.\n\nCRITICAL BLUEPRINT FOR REPO CLONING / WORKER DEPLOYMENTS:\nIf the user asks to clone, duplicate, or deploy to a new repository, you MUST follow these rules to avoid bash/git errors:\n1. File Transfer: Do NOT use raw git clone/commit bash commands (which fail due to missing identity or empty commits). Instead, use the \'cpina/github-action-push-to-another-repository\' action.\n2. Wrangler Isolation: Before pushing, you MUST update wrangler.toml in the target repo to change the \'name\' field so it does not overwrite the production worker.\n3. Secrets: Ensure the target repo gets its own TELEGRAM_BOT_TOKEN via GitHub Secrets.\n4. Repository Creation: If creating a repo, use the GitHub API via curl.\n5. Environment Variables: Always define necessary environment variables in each step\'s env: block before using them in shell commands.\n6. Worker URL: The Cloudflare Worker URL is always available as ${{ secrets.TELEGRAM_WORKER_URL }}. Use this when any step needs to curl or ping the worker. Never leave TELEGRAM_WORKER_URL empty.'
+                content: [
+                  'You are an expert GitHub Actions engineer. Return ONLY raw valid YAML for GitHub Actions. No markdown fences, no commentary. Output ONLY the YAML.',
+                  '',
+                  'REQUIRED TOP-LEVEL STRUCTURE — follow exactly, no exceptions:',
+                  'name: <workflow name>',
+                  'on: <trigger>',
+                  'jobs:',
+                  '  <job-id>:',
+                  '    runs-on: ubuntu-latest',
+                  '    steps:',
+                  '      - name: <step name>',
+                  '        run: <command>',
+                  '',
+                  'RULES: "on" and "jobs" MUST be top-level keys. "steps" MUST be nested inside a job under "jobs". NEVER place "steps" at the top level.',
+                  '',
+                  'ADDITIONAL RULES:',
+                  '1. File Transfer: Use cpina/github-action-push-to-another-repository, not raw git commands.',
+                  '2. Wrangler Isolation: Always update wrangler.toml name field in target repos.',
+                  '3. Secrets: Seed TELEGRAM_BOT_TOKEN into target repos.',
+                  '4. Repository Creation: Use GitHub API via curl.',
+                  '5. Environment Variables: Define all env vars in each step env: block before use.',
+                  '6. Worker URL: Use ${{ secrets.TELEGRAM_WORKER_URL }} to curl the worker. Never leave it empty.',
+                ].join('\n')
               },
               { role: 'user', content: prompt }
             ]
@@ -117,6 +139,21 @@ const commands = {
       const shortTime = Date.now().toString(36);
       const filename = `bot_${shortTime}.yml`;
       const path = `.github/workflows/${filename}`;
+
+      // Validate basic YAML structure before committing
+      const hasOn = /^on[: ]/m.test(yaml) || /^"on"[: ]/m.test(yaml);
+      const hasJobs = /^jobs:/m.test(yaml);
+      const hasSteps = /^\s+steps:/m.test(yaml);
+      const stepsAtTopLevel = /^steps:/m.test(yaml);
+
+      if (!hasJobs || stepsAtTopLevel) {
+        console.error('[Validation] AI returned malformed YAML — missing jobs: or steps at top level');
+        return sendMessage(env, msg.chat.id,
+          '❌ AI generated invalid YAML structure (missing `jobs:` or `steps:` at wrong level). Please try again with a more specific description.');
+      }
+      if (!hasOn) {
+        console.warn('[Validation] AI returned YAML missing on: trigger — still committing but may fail');
+      }
 
       await sendMessage(env, msg.chat.id, `✍️ Generated workflow. Committing to \`${path}\` on \`${repo}\`...`);
 
