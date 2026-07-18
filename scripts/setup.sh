@@ -95,7 +95,7 @@ fi
 echo "Looking up your workers.dev subdomain..."
 SUBDOMAIN=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
-  | grep -o '"subdomain":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+  | grep -Eo '"subdomain"\s*:\s*"[^"]*"' | head -1 | cut -d'"' -f4 || true)
 
 if [[ -z "$SUBDOMAIN" ]]; then
   echo "Couldn't determine your workers.dev subdomain automatically."
