@@ -1,7 +1,40 @@
 import { handleUpdate } from './bot.js';
 
+// Simple in-memory ring buffer for logs (resets if the isolate restarts)
+const logBuffer = [];
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+function captureLog(level, ...args) {
+  const line = `[${new Date().toISOString()}] [${level}] ` + args.map(a => {
+    try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch(e) { return String(a); }
+  }).join(' ');
+  logBuffer.push(line);
+  if (logBuffer.length > 500) logBuffer.shift();
+}
+
+console.log = (...args) => { captureLog('INFO', ...args); originalLog(...args); };
+console.error = (...args) => { captureLog('ERROR', ...args); originalError(...args); };
+console.warn = (...args) => { captureLog('WARN', ...args); originalWarn(...args); };
+
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // Provide a protected endpoint to read logs live
+    if (url.pathname === '/logs' && request.method === 'GET') {
+      const auth = request.headers.get('Authorization');
+      // Protect it with the webhook secret as a token
+      if (auth !== `Bearer ${env.TELEGRAM_WEBHOOK_SECRET}`) {
+        return new Response('Unauthorized', { status: 401 });
+      }
+      return new Response(logBuffer.join('\n') + '\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+
     // Simple health check for GET requests
     if (request.method !== 'POST') {
       return new Response('Bot is running.', { status: 200 });

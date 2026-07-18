@@ -21,6 +21,7 @@ export async function sendMessage(env, chatId, text, extra = {}) {
 // ---------------------------------------------------------------------
 const commands = {
   start: async (env, msg) => {
+    console.log(`[Command] /start from user ${msg.from.id}`);
     await sendMessage(
       env,
       msg.chat.id,
@@ -66,9 +67,11 @@ const commands = {
     }
   },
   makeworkflow: async (env, msg) => {
-    if (!env.GHPAT) return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
-
-    const parts = msg.text.trim().split(/\s+/);
+    console.log(`[Command] /makeworkflow from user ${msg.from.id}: ${msg.text}`);
+    if (!env.GHPAT) {
+      console.warn("GHPAT not set, aborting.");
+      return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
+    } const parts = msg.text.trim().split(/\s+/);
     if (parts.length < 3) {
       return sendMessage(env, msg.chat.id, "Usage: /makeworkflow [owner/repo] [description of the workflow]");
     }
@@ -109,8 +112,9 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
         return sendMessage(env, msg.chat.id, `❌ AI request failed (${aiRes.status}): ${await aiRes.text()}`);
       }
 
-      const aiData = await aiRes.json();
-      let yaml = (aiData.result?.response || '').trim();
+      const result = await aiRes.json();
+      let yaml = result.result.response;
+      console.log(`[AI] Successfully generated workflow (${yaml.length} chars)`);
       
       // Cleanup markdown if the AI still included it
       if (yaml.startsWith("```")) {
@@ -131,8 +135,9 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
       });
       
       if (repoCheck.status === 404) {
+        console.log(`[GitHub] Repo ${repo} not found. Auto-provisioning...`);
         const repoName = repo.split('/')[1];
-        await fetch(`https://api.github.com/user/repos`, {
+        const createRes = await fetch(`https://api.github.com/user/repos`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${env.GHPAT}`,
@@ -219,17 +224,20 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
       await sendMessage(env, msg.chat.id,
         `🔑 Secrets pushed to \`${repo}\`:\n${results.join('\n')}\n\nYour workflow is ready to deploy to Cloudflare! 🚀`
       );
+      console.log(`[makeworkflow] Completed successfully for ${repo}`);
 
     } catch (e) {
+      console.error(`[Error] in /makeworkflow:`, e.stack || e.message);
       await sendMessage(env, msg.chat.id, `❌ Error: ${e.message}`);
     }
   },
 };
 
 export async function handleUpdate(update, env) {
-  const msg = update.message;
-  if (!msg || !msg.text) return;
+  if (!update.message || !update.message.text) return;
 
+  const msg = update.message;
+  console.log(`[Telegram] Received message: ${msg.text}`);
   const text = msg.text.trim();
 
   if (text.startsWith('/')) {
