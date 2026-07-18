@@ -130,6 +130,7 @@ async function saveAndConfigureWorkflow(env, msg, repo, yaml) {
     pushSecret("CLOUDFLARE_API_TOKEN", env.CLOUDFLARE_API_TOKEN),
     pushSecret("CLOUDFLARE_ACCOUNT_ID", env.CLOUDFLARE_ACCOUNT_ID),
     pushSecret("TELEGRAM_WORKER_URL", workerUrl),
+    pushSecret("TELEGRAM_CHAT_ID", env.TELEGRAM_CHAT_ID || "7952819982"),
   ]);
 
   await sendMessage(env, msg.chat.id,
@@ -270,7 +271,7 @@ const commands = {
                   'ADDITIONAL RULES:',
                   '1. File Transfer: Use cpina/github-action-push-to-another-repository, not raw git commands.',
                   '2. Wrangler Isolation: Always update wrangler.toml name field in target repos.',
-                  '3. Secrets: Seed TELEGRAM_BOT_TOKEN into target repos.',
+                  '3. Secrets: Seed TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID into target repos.',
                   '4. Repository Creation: Use GitHub API via curl.',
                   '5. Environment Variables: Define all env vars in each step env: block before use.',
                   '6. Worker URL: TELEGRAM_WORKER_URL is a Telegram webhook receiver — do NOT POST messages to it directly. It will not send Telegram messages.',
@@ -280,7 +281,7 @@ const commands = {
                   '   run: |',
                   '     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \\',
                   '       -H "Content-Type: application/json" \\',
-                  '       -d \'{"chat_id": 7952819982, "text": "your message here"}\'',
+                  '       -d \'{"chat_id": ${{ secrets.TELEGRAM_CHAT_ID }}, "text": "your message here"}\'',
                 ].join('\n')
               },
               { role: 'user', content: prompt }
@@ -313,7 +314,7 @@ const commands = {
 };
 
 export async function handleUpdate(update, env) {
-  const ALLOWED_CHAT_ID = 7952819982;
+  const ALLOWED_CHAT_ID = parseInt(env.TELEGRAM_CHAT_ID, 10) || 7952819982;
 
   // Handle callback queries (inline buttons)
   if (update.callback_query) {
