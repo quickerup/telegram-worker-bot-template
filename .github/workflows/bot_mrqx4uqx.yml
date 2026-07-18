@@ -1,0 +1,32 @@
+name: Update Bot Worker Routing Code
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+jobs:
+  update-routing-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        run: git checkout main
+      - name: Update wrangler.toml
+        env:
+          REPO_NAME: my-repo
+        run: |
+          cp wrangler.toml wrangler.toml.bak
+          sed -i "s/name =.*/name = \"${REPO_NAME}\"/" wrangler.toml
+      - name: Push to another repository
+        uses: cpina/github-action-push-to-another-repository@v1
+        with:
+          source-repo: ${{ github.repository }}
+          source-branch: main
+          target-repo: my-target-repo
+          target-branch: main
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Seed secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          git config --global user.email "github-actions[bot]@users
