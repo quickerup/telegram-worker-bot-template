@@ -12,6 +12,7 @@
     "wrangler": "^3.80.0"
   },
   "dependencies": {
+    "libsodium-wrappers": "^0.8.4",
     "tweetnacl": "^1.0.3"
   }
 }

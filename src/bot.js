@@ -1,4 +1,4 @@
-import nacl from 'tweetnacl';
+import _sodium from 'libsodium-wrappers';
 
 const telegramApi = (token) => `https://api.telegram.org/bot${token}`;
 
@@ -157,23 +157,14 @@ const commands = {
 
       const { key: repoPublicKey, key_id } = await pubKeyRes.json();
 
-      // Encrypt a secret value using the repo's public key via tweetnacl sealed box
+      // Encrypt using libsodium crypto_box_seal — exactly what GitHub requires
+      await _sodium.ready;
+      const sodium = _sodium;
       function encryptSecret(secretValue) {
         const repoKeyBytes = Uint8Array.from(atob(repoPublicKey), c => c.charCodeAt(0));
         const secretBytes = new TextEncoder().encode(secretValue);
-        // Generate ephemeral keypair
-        const ephemeralKeypair = nacl.box.keyPair();
-        // Compute shared key
-        const sharedKey = nacl.box.before(repoKeyBytes, ephemeralKeypair.secretKey);
-        // Encrypt: nonce + box
-        const nonce = nacl.randomBytes(nacl.box.nonceLength);
-        const encrypted = nacl.box.after(secretBytes, nonce, sharedKey);
-        // Sealed box format: ephemeral public key || nonce || encrypted
-        const combined = new Uint8Array(ephemeralKeypair.publicKey.length + nonce.length + encrypted.length);
-        combined.set(ephemeralKeypair.publicKey, 0);
-        combined.set(nonce, ephemeralKeypair.publicKey.length);
-        combined.set(encrypted, ephemeralKeypair.publicKey.length + nonce.length);
-        return btoa(String.fromCharCode(...combined));
+        const encrypted = sodium.crypto_box_seal(secretBytes, repoKeyBytes);
+        return btoa(String.fromCharCode(...encrypted));
       }
 
       // Push each secret to the target repo
