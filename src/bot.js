@@ -14,6 +14,111 @@ export async function sendMessage(env, chatId, text, extra = {}) {
   return res;
 }
 
+async function answerCallbackQuery(env, callbackQueryId, text) {
+  return fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/answerCallbackQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ callback_query_id: callbackQueryId, text })
+  });
+}
+
+async function editMessageReplyMarkup(env, chatId, messageId, replyMarkup) {
+  return fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/editMessageReplyMarkup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: replyMarkup })
+  });
+}
+
+function actionsRepo(env) {
+  return env.GITHUB_REPOSITORY || 'quickerup/telegram-worker-bot-template';
+}
+
+async function githubRequest(env, path, options = {}) {
+  return fetch(`https://api.github.com${path}`, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${env.GHPAT}`,
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': 'Cloudflare-Worker-Telegram-Bot',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  });
+}
+
+async function handleWorkflowCallback(env, cb) {
+  if (!env.GHPAT) {
+    await answerCallbackQuery(env, cb.id, 'GHPAT is not set');
+    return;
+  }
+
+  const repo = actionsRepo(env);
+  const [action, workflowId] = cb.data.split(':');
+  if (!workflowId) {
+    await answerCallbackQuery(env, cb.id, 'Invalid workflow action');
+    return;
+  }
+
+  if (action === 'wr') {
+    const res = await githubRequest(env, `/repos/${repo}/actions/workflows/${workflowId}/dispatches`, {
+      method: 'POST',
+      body: JSON.stringify({ ref: env.GITHUB_REF || 'main' })
+    });
+    await answerCallbackQuery(env, cb.id, res.ok ? 'Triggered ✅' : `Trigger failed (${res.status})`);
+    return;
+  }
+
+  if (action === 'wd') {
+    const workflowRes = await githubRequest(env, `/repos/${repo}/actions/workflows/${workflowId}`);
+    if (!workflowRes.ok) {
+      await answerCallbackQuery(env, cb.id, `Lookup failed (${workflowRes.status})`);
+      return;
+    }
+    const workflow = await workflowRes.json();
+    await answerCallbackQuery(env, cb.id, 'Confirm delete in chat');
+    await sendMessage(env, cb.message.chat.id, `Delete workflow \`${workflow.name}\` at \`${workflow.path}\`?`, {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: 'Cancel', callback_data: `wc:${workflowId}` },
+          { text: 'Confirm delete 🗑️', callback_data: `wD:${workflowId}` }
+        ]]
+      }
+    });
+    return;
+  }
+
+  if (action === 'wc') {
+    await answerCallbackQuery(env, cb.id, 'Delete cancelled');
+    if (cb.message) {
+      await editMessageReplyMarkup(env, cb.message.chat.id, cb.message.message_id, { inline_keyboard: [] });
+    }
+    return;
+  }
+
+  if (action === 'wD') {
+    const workflowRes = await githubRequest(env, `/repos/${repo}/actions/workflows/${workflowId}`);
+    if (!workflowRes.ok) {
+      await answerCallbackQuery(env, cb.id, `Lookup failed (${workflowRes.status})`);
+      return;
+    }
+    const workflow = await workflowRes.json();
+    const fileRes = await githubRequest(env, `/repos/${repo}/contents/${workflow.path}`);
+    if (!fileRes.ok) {
+      await answerCallbackQuery(env, cb.id, `File lookup failed (${fileRes.status})`);
+      return;
+    }
+    const file = await fileRes.json();
+    const deleteRes = await githubRequest(env, `/repos/${repo}/contents/${workflow.path}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ message: `Delete ${workflow.path} via bot`, sha: file.sha })
+    });
+    await answerCallbackQuery(env, cb.id, deleteRes.ok ? 'Deleted 🗑️' : `Delete failed (${deleteRes.status})`);
+    if (deleteRes.ok && cb.message) {
+      await editMessageReplyMarkup(env, cb.message.chat.id, cb.message.message_id, { inline_keyboard: [] });
+    }
+  }
+}
 
 async function saveAndConfigureWorkflow(env, msg, repo, yaml) {
   const shortTime = Date.now().toString(36);
@@ -337,12 +442,9 @@ export async function handleUpdate(update, env) {
         text: `/trigger ${repo} ${workflow} main`
       };
       await commands.trigger(env, fakeMsg);
-      // Acknowledge the button press
-      await fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callback_query_id: cb.id, text: 'Triggering workflow...' })
-      });
+      await answerCallbackQuery(env, cb.id, 'Triggering workflow...');
+    } else if (cb.data && /^(wr|wd|wc|wD):/.test(cb.data)) {
+      await handleWorkflowCallback(env, cb);
     }
     return;
   }
