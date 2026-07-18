@@ -78,7 +78,7 @@ const commands = {
     await sendMessage(env, msg.chat.id, `🤖 Asking AI to design workflow for \`${repo}\`...`);
 
     try {
-      const aiReq = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+      const aiReq = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
         messages: [
           {
             role: "system",
