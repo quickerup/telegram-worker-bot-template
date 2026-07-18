@@ -1,0 +1,35 @@
+name: Show Action Errors
+
+on:
+  workflow_dispatch:
+
+jobs:
+  report-errors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and report failed runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          REPO="${{ github.repository }}"
+          RUNS=$(gh run list --repo "$REPO" --status failure --limit 5 --json databaseId,name,headBranch)
+
+          if [ "$(echo "$RUNS" | jq 'length')" -eq 0 ]; then
+            MESSAGE="✅ No failed runs in the last 5 workflow runs."
+          else
+            MESSAGE="🚨 Recent failed runs:"$'\n'
+            while read -r run; do
+              ID=$(echo "$run" | jq -r '.databaseId')
+              NAME=$(echo "$run" | jq -r '.name')
+              BRANCH=$(echo "$run" | jq -r '.headBranch')
+              STEP=$(gh run view "$ID" --repo "$REPO" --json jobs --jq '.jobs[].steps[]? | select(.conclusion=="failure") | .name' | head -n1)
+              MESSAGE="${MESSAGE}❌ ${NAME} (${BRANCH}) — ${STEP:-unknown step}"$'\n'
+            done < <(echo "$RUNS" | jq -c '.[]')
+          fi
+
+          PAYLOAD=$(jq -n --arg chat "$CHAT_ID" --arg text "$MESSAGE" '{chat_id: $chat, text: $text}')
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
