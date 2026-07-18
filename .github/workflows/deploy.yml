@@ -32,6 +32,7 @@ jobs:
             CLOUDFLARE_API_TOKEN
             CLOUDFLARE_ACCOUNT_ID
             AI_CF_TOKEN
+            TELEGRAM_CHAT_ID
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
@@ -39,6 +40,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AI_CF_TOKEN: ${{ secrets.AI_CF_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
       # Registers your Worker's public URL as the Telegram webhook.
       # WORKER_URL is a repo VARIABLE (not secret) — see README for how to set it.
