@@ -1,32 +1,76 @@
 name: Deployment
+
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Configure Wrangler
-        uses: cloudflare/wrangler-action@v2.0.1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          zoneId: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          wranglerVersion: 4
+        uses: actions/checkout@v4
+
       - name: Update wrangler.toml
         run: |
           cp wrangler.toml wrangler.toml.bak
           sed -i 's/name = ".*/name = "my-project"/g' wrangler.toml
+
       - name: Deploy to Cloudflare
-        run: |
-          wrangler publish
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
       - name: Send deployment notification
+        if: success()
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -H "Content-Type: application/json" \
-            -d '{"chat_id": "'
+            -d "{\"chat_id\": \"${CHAT_ID}\", \"text\": \"Deployment completed successfully.\"}"
+
+      - name: Create issue for deployment failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create "automatic issue report" \
+            --color "E99695" \
+            --description "Automatically created for failed GitHub Actions runs" \
+            --force
+
+          cat > issue-body.md <<ISSUE_BODY
+          ### ❌ Deployment workflow failure
+
+          The deployment workflow failed and needs attention.
+
+          - **Repository:** \`${REPO}\`
+          - **Workflow:** \`Deployment\`
+          - **Run:** [#${RUN_NUMBER}](${RUN_URL})
+          - **Branch:** \`${BRANCH}\`
+          - **Commit:** \`${COMMIT_SHA}\`
+          - **Actor:** \`${ACTOR}\`
+
+          Review the failed run logs and close this issue when the failure is resolved.
+          ISSUE_BODY
+
+          gh issue create \
+            --title "🚨 Action failure: Deployment run #${RUN_NUMBER}" \
+            --body-file issue-body.md \
+            --label "automatic issue report"
