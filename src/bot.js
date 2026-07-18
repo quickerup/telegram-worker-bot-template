@@ -61,6 +61,14 @@ const commands = {
 
     if (res.ok) {
       await sendMessage(env, msg.chat.id, `✅ Successfully triggered workflow!`);
+    } else if (res.status === 422) {
+      const body = await res.json().catch(() => ({}));
+      if (body.message && body.message.includes('workflow_dispatch')) {
+        await sendMessage(env, msg.chat.id,
+          `⚠️ Cannot trigger \`${workflow}\` manually — it doesn't have a \`workflow_dispatch\` trigger.\n\nIt will run automatically based on its own trigger (e.g. \`workflow_run\`, \`push\`, etc).`);
+      } else {
+        await sendMessage(env, msg.chat.id, `❌ Failed to trigger (HTTP 422):\n${body.message || JSON.stringify(body)}`);
+      }
     } else {
       const errorText = await res.text();
       await sendMessage(env, msg.chat.id, `❌ Failed to trigger (HTTP ${res.status}):\n${errorText}`);
@@ -107,6 +115,11 @@ const commands = {
                   '        run: <command>',
                   '',
                   'RULES: "on" and "jobs" MUST be top-level keys. "steps" MUST be nested inside a job under "jobs". NEVER place "steps" at the top level.',
+                  'ALWAYS include workflow_dispatch as a trigger alongside any other triggers (e.g. workflow_run, push, schedule), so the workflow can always be manually fired:',
+                  'on:',
+                  '  workflow_dispatch:',
+                  '  workflow_run:   # or push, schedule, etc',
+                  '    ...',
                   '',
                   'ADDITIONAL RULES:',
                   '1. File Transfer: Use cpina/github-action-push-to-another-repository, not raw git commands.',
