@@ -130,7 +130,7 @@ async function saveAndConfigureWorkflow(env, msg, repo, yaml) {
     pushSecret("CLOUDFLARE_API_TOKEN", env.CLOUDFLARE_API_TOKEN),
     pushSecret("CLOUDFLARE_ACCOUNT_ID", env.CLOUDFLARE_ACCOUNT_ID),
     pushSecret("TELEGRAM_WORKER_URL", workerUrl),
-    pushSecret("TELEGRAM_CHAT_ID", env.TELEGRAM_CHAT_ID || "7952819982"),
+    pushSecret("TELEGRAM_CHAT_ID", env.TELEGRAM_CHAT_ID || (() => { throw new Error("TELEGRAM_CHAT_ID env var is required"); })()),
   ]);
 
   await sendMessage(env, msg.chat.id,
@@ -314,7 +314,11 @@ const commands = {
 };
 
 export async function handleUpdate(update, env) {
-  const ALLOWED_CHAT_ID = parseInt(env.TELEGRAM_CHAT_ID, 10) || 7952819982;
+  if (!env.TELEGRAM_CHAT_ID) {
+    console.error("TELEGRAM_CHAT_ID environment variable is missing!");
+    return;
+  }
+  const ALLOWED_CHAT_ID = parseInt(env.TELEGRAM_CHAT_ID, 10);
 
   // Handle callback queries (inline buttons)
   if (update.callback_query) {
