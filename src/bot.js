@@ -93,16 +93,7 @@ const commands = {
             messages: [
               {
                 role: 'system',
-                content: `You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user's request. Do not use markdown formatting like \`\`\`yaml, just output the raw text. Do not add any conversational text.
-
-CRITICAL BLUEPRINT FOR REPO CLONING / WORKER DEPLOYMENTS:
-If the user asks to clone, duplicate, or deploy to a new repository, you MUST follow these rules to avoid bash/git errors:
-1. File Transfer: Do NOT use raw git clone/commit bash commands (which fail due to missing identity or empty commits). Instead, use the 'cpina/github-action-push-to-another-repository' action.
-2. Wrangler Isolation: Before pushing, you MUST update wrangler.toml in the target repo to change the 'name' field so it does not overwrite the production worker.
-3. Secrets: Ensure the target repo gets its own TELEGRAM_BOT_TOKEN via GitHub Secrets.
-4. Repository Creation: If creating a repo, use the GitHub API via curl.
-5. Environment Variables: Always define necessary environment variables in each step's `env:` block before using them in shell commands.
-6. Worker URL: The Cloudflare Worker URL is always available as \`\${{ secrets.TELEGRAM_WORKER_URL }}\`. Use this when any step needs to curl or ping the worker. Never leave TELEGRAM_WORKER_URL empty.`
+                content: 'You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user\'s request. Do not use markdown formatting like ```yaml, just output the raw text. Do not add any conversational text.\n\nCRITICAL BLUEPRINT FOR REPO CLONING / WORKER DEPLOYMENTS:\nIf the user asks to clone, duplicate, or deploy to a new repository, you MUST follow these rules to avoid bash/git errors:\n1. File Transfer: Do NOT use raw git clone/commit bash commands (which fail due to missing identity or empty commits). Instead, use the \'cpina/github-action-push-to-another-repository\' action.\n2. Wrangler Isolation: Before pushing, you MUST update wrangler.toml in the target repo to change the \'name\' field so it does not overwrite the production worker.\n3. Secrets: Ensure the target repo gets its own TELEGRAM_BOT_TOKEN via GitHub Secrets.\n4. Repository Creation: If creating a repo, use the GitHub API via curl.\n5. Environment Variables: Always define necessary environment variables in each step\'s env: block before using them in shell commands.\n6. Worker URL: The Cloudflare Worker URL is always available as ${{ secrets.TELEGRAM_WORKER_URL }}. Use this when any step needs to curl or ping the worker. Never leave TELEGRAM_WORKER_URL empty.'
               },
               { role: 'user', content: prompt }
             ]
