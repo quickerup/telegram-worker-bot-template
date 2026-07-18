@@ -79,7 +79,7 @@ const commands = {
 
     try {
       const aiRes = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/openai/gpt-oss-120b`,
+        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/moonshotai/kimi-k2.6`,
         {
           method: 'POST',
           headers: {
