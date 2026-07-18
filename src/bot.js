@@ -237,6 +237,14 @@ export async function handleUpdate(update, env) {
   if (!update.message || !update.message.text) return;
 
   const msg = update.message;
+
+  // STRICT AUTHORIZATION: Only allow commands from this specific chat ID
+  const ALLOWED_CHAT_ID = 7952819982;
+  if (msg.chat.id !== ALLOWED_CHAT_ID) {
+    console.warn(`[Security] Ignored message from unauthorized chat ID: ${msg.chat.id}`);
+    return;
+  }
+
   console.log(`[Telegram] Received message: ${msg.text}`);
   const text = msg.text.trim();
 
