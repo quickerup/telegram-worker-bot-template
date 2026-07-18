@@ -122,7 +122,8 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
         yaml = yaml.replace(/^```[a-z]*\n?/, "").replace(/\n```$/, "");
       }
 
-      const filename = `bot_generated_${Date.now()}.yml`;
+      const shortTime = Date.now().toString(36);
+      const filename = `bot_${shortTime}.yml`;
       const path = `.github/workflows/${filename}`;
 
       await sendMessage(env, msg.chat.id, `✍️ Generated workflow. Committing to \`${path}\` on \`${repo}\`...`);
@@ -227,7 +228,7 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
         {
           reply_markup: {
             inline_keyboard: [[
-              { text: "🚀 Trigger Workflow", callback_data: `trigger:${repo}:${filename}` }
+              { text: "🚀 Trigger Workflow", callback_data: `trig:${repo}:${filename}`.substring(0, 64) }
             ]]
           }
         }
@@ -250,7 +251,7 @@ export async function handleUpdate(update, env) {
     if (cb.message && cb.message.chat.id !== ALLOWED_CHAT_ID) return;
     
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
-    if (cb.data && cb.data.startsWith('trigger:')) {
+    if (cb.data && cb.data.startsWith('trig:')) {
       const [, repo, workflow] = cb.data.split(':');
       const fakeMsg = {
         chat: cb.message.chat,
