@@ -11,7 +11,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Configure Wrangler
-        uses: cloudflare/wrangler-action@v2.0.1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           zoneId: ${{ secrets.CLOUDFLARE_ZONE_ID }}

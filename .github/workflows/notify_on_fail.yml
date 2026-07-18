@@ -1,56 +1,65 @@
-name: Global Failure Notification
+name: Global Failure Issue Reporter
+
 on:
   workflow_run:
-    workflows: ["*"]
+    workflows:
+      - Baseline Ping Test
+      - Victory Ping
+      - Telegram Test Button
+      - Main Bot Ping Test
+      - Update Bot Menu Layout
+      - Deploy Telegram Bot
+      - Map Signal Network Trace
+      - My Custom Workflow
+      - Bot Ping
+      - Update Bot Worker Routing Code
+      - Send Telegram Message
+      - Deployment
     types: [completed]
+
+permissions:
+  issues: write
+  actions: read
+
 jobs:
-  notify-failure:
+  create-issue:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      actions: read
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     steps:
-      - name: Send Telegram Alert and Create Issue
+      - name: Create issue for failed workflow run
         env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          REPO: ${{ github.repository }}
-          URL: ${{ github.event.workflow_run.html_url }}
-          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+          REPO: ${{ github.repository }}
         run: |
-          # 1. Send Telegram Alert
-          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"chat_id\": \"${CHAT_ID}\",
-              \"text\": \"❌ <b>GitHub Action Failed!</b>\n\n<b>Repo:</b> ${REPO}\n<b>Workflow:</b> ${WORKFLOW_NAME}\n<a href='${URL}'>View Failed Run</a>\",
-              \"parse_mode\": \"HTML\",
-              \"disable_web_page_preview\": true
-            }"
+          gh label create "automatic issue report" \
+            --color "E99695" \
+            --description "Automatically created for failed GitHub Actions runs" \
+            --force
 
-          # 2. Manage GitHub Issue
-          gh label create "automatic issue report" --color "E99695" --description "Automatically created by failure notification workflow" --force || true
-          
-          # Search for an existing open issue for this specific workflow
-          EXISTING_ISSUE=$(gh issue list --label "automatic issue report" --state open --search "in:title ${WORKFLOW_NAME}" --json number --jq '.[0].number')
-          
-          BODY="### ❌ Workflow Failure: ${WORKFLOW_NAME}
-          
-          **Branch:** \`${BRANCH}\`
-          **Commit:** \`${COMMIT_SHA}\`
-          **Run Details:** [View Failed Run logs](${URL})"
+          cat > issue-body.md <<ISSUE_BODY
+          ### ❌ GitHub Actions failure
 
-          if [ -n "$EXISTING_ISSUE" ]; then
-            echo "Found existing open issue #${EXISTING_ISSUE}. Adding a comment instead of creating a new issue."
-            gh issue comment "$EXISTING_ISSUE" --body "$BODY"
-          else
-            echo "No open issue found. Creating a new one."
-            gh issue create \
-              --title "🚨 Failure in workflow: ${WORKFLOW_NAME}" \
-              --body "$BODY" \
-              --label "automatic issue report"
-          fi
+          A workflow run failed and needs attention.
+
+          - **Repository:** \`${REPO}\`
+          - **Workflow:** \`${WORKFLOW_NAME}\`
+          - **Run:** [#${RUN_NUMBER}](${RUN_URL})
+          - **Run ID:** \`${RUN_ID}\`
+          - **Branch:** \`${BRANCH}\`
+          - **Commit:** \`${COMMIT_SHA}\`
+          - **Actor:** \`${ACTOR}\`
+
+          Review the failed run logs and close this issue when the failure is resolved.
+          ISSUE_BODY
+
+          gh issue create \
+            --title "🚨 Action failure: ${WORKFLOW_NAME} run #${RUN_NUMBER}" \
+            --body-file issue-body.md \
+            --label "automatic issue report"
