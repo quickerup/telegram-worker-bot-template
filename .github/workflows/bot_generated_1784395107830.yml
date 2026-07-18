@@ -1,0 +1,31 @@
+name: Deploy Sandbox Clone
+on:
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create new private repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: bot-sandbox
+        run: |
+          curl -X POST \
+          https://api.github.com/repos/${GITHUB_REPOSITORY}/forks \
+          -H 'Authorization: Bearer ${GITHUB_TOKEN}' \
+          -H 'Content-Type: application/json' \
+          -d '{"organization":"${GITHUB_REPOSITORY_OWNER}","repository_name":"${REPO_NAME}","private":true}'
+          curl -X PATCH \
+          https://api.github.com/repos/${GITHUB_REPOSITORY_OWNER}/${REPO_NAME} \
+          -H 'Authorization: Bearer ${GITHUB_TOKEN}' \
+          -H 'Content-Type: application/json' \
+          -d '{"private":true}'
+
+      - name: Configure git
+        run: |
+          git config --global user.email 'bot@example.com'
+          git config --global user.name 'Sandbox Bot'
+
+      - name: Clone new repo
+        run: |
+          git clone https://github.com/${GITHUB_RE
