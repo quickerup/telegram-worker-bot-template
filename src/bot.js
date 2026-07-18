@@ -222,7 +222,14 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
       ]);
 
       await sendMessage(env, msg.chat.id,
-        `🔑 Secrets pushed to \`${repo}\`:\n${results.join('\n')}\n\nYour workflow is ready to deploy to Cloudflare! 🚀`
+        `🔑 Secrets pushed to \`${repo}\`:\n${results.join('\n')}\n\nYour workflow is ready to deploy to Cloudflare! 🚀`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "🚀 Trigger Workflow", callback_data: `trigger:${repo}:${filename}` }
+            ]]
+          }
+        }
       );
       console.log(`[makeworkflow] Completed successfully for ${repo}`);
 
@@ -234,12 +241,37 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
 };
 
 export async function handleUpdate(update, env) {
+  const ALLOWED_CHAT_ID = 7952819982;
+
+  // Handle callback queries (inline buttons)
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    if (cb.message && cb.message.chat.id !== ALLOWED_CHAT_ID) return;
+    
+    console.log(`[Telegram] Received callback_query: ${cb.data}`);
+    if (cb.data && cb.data.startsWith('trigger:')) {
+      const [, repo, workflow] = cb.data.split(':');
+      const fakeMsg = {
+        chat: cb.message.chat,
+        from: cb.from,
+        text: `/trigger ${repo} ${workflow} main`
+      };
+      await commands.trigger(env, fakeMsg);
+      // Acknowledge the button press
+      await fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callback_query_id: cb.id, text: 'Triggering workflow...' })
+      });
+    }
+    return;
+  }
+
   if (!update.message || !update.message.text) return;
 
   const msg = update.message;
 
   // STRICT AUTHORIZATION: Only allow commands from this specific chat ID
-  const ALLOWED_CHAT_ID = 7952819982;
   if (msg.chat.id !== ALLOWED_CHAT_ID) {
     console.warn(`[Security] Ignored message from unauthorized chat ID: ${msg.chat.id}`);
     return;
