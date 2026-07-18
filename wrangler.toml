@@ -10,3 +10,6 @@ compatibility_date = "2024-09-25"
 # For local dev, create a .dev.vars file (gitignored) with:
 #   TELEGRAM_BOT_TOKEN=xxxx
 #   TELEGRAM_WEBHOOK_SECRET=xxxx
+
+[ai]
+binding = "AI"

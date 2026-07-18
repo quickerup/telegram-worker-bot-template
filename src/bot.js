@@ -65,7 +65,6 @@ const commands = {
   },
   makeworkflow: async (env, msg) => {
     if (!env.GHPAT) return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
-    if (!env.AI_API_KEY) return sendMessage(env, msg.chat.id, "Please set AI_API_KEY secret first.");
 
     const parts = msg.text.trim().split(/\s+/);
     if (parts.length < 3) {
@@ -77,37 +76,20 @@ const commands = {
     await sendMessage(env, msg.chat.id, `🤖 Asking AI to design workflow for \`${repo}\`...`);
 
     try {
-      const model = env.AI_MODEL || "moonshotai/kimi-k3";
-      // Defaults to OpenRouter format but can be overridden (e.g. Moonshot native API)
-      const apiBase = env.AI_API_BASE || "https://openrouter.ai/api/v1/chat/completions"; 
-      
-      const aiReq = await fetch(apiBase, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${env.AI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user's request. Do not use markdown formatting like ```yaml, just output the raw text. Do not add any conversational text."
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ]
-        })
+      const aiReq = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user's request. Do not use markdown formatting like ```yaml, just output the raw text. Do not add any conversational text."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
       });
 
-      if (!aiReq.ok) {
-        return sendMessage(env, msg.chat.id, `❌ AI request failed: ${await aiReq.text()}`);
-      }
-
-      const aiData = await aiReq.json();
-      let yaml = aiData.choices[0].message.content.trim();
+      let yaml = aiReq.response.trim();
       
       // Cleanup markdown if the AI still included it
       if (yaml.startsWith("```")) {
