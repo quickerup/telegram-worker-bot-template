@@ -100,7 +100,8 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
 1. File Transfer: Do NOT use raw git clone/commit bash commands (which fail due to missing identity or empty commits). Instead, use the 'cpina/github-action-push-to-another-repository' action.
 2. Wrangler Isolation: Before pushing, you MUST update wrangler.toml in the target repo to change the 'name' field so it does not overwrite the production worker.
 3. Secrets: Ensure the target repo gets its own TELEGRAM_BOT_TOKEN via GitHub Secrets.
-4. Repository Creation: If creating a repo, use the GitHub API via curl.`
+4. Repository Creation: If creating a repo, use the GitHub API via curl.
+5. Environment Variables: Always define necessary environment variables (e.g. \`env: TELEGRAM_WORKER_URL: \${{ secrets.TELEGRAM_WORKER_URL }}\`) in the workflow step before using them in commands like curl.`
               },
               { role: 'user', content: prompt }
             ]
