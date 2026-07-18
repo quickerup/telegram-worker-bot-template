@@ -1,0 +1,24 @@
+name: Update Bot Core Routing Logic
+on:
+  workflow_dispatch:
+jobs:
+  update-routing-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Update routing logic
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          echo "Updating routing logic..."
+          cp src/routing.ts src/routing.ts.backup
+          echo "import { Router } from 'express';" >> src/routing.ts
+          echo "import { GitHubAPI } from './github-api';" >> src/routing.ts
+          echo "import { TelegramBot } from './telegram-bot';" >> src/routing.ts
+          echo "const router = Router();" >> src/routing.ts
+          echo "router.get('/workflows', async (req, res) => {" >> src/routing.ts
+          echo "  const workflows = await GitHubAPI.getWorkflows();" >> src/routing.ts
+          echo "  const buttons = workflows.map(workflow => [" >> src/routing.ts
+          echo "    { text: workflow
