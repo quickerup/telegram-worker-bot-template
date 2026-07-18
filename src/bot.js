@@ -78,20 +78,32 @@ const commands = {
     await sendMessage(env, msg.chat.id, `🤖 Asking AI to design workflow for \`${repo}\`...`);
 
     try {
-      const aiReq = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user's request. Do not use markdown formatting like ```yaml, just output the raw text. Do not add any conversational text."
+      const aiRes = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/openai/gpt-oss-120b`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.AI_CF_TOKEN}`,
+            'Content-Type': 'application/json'
           },
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
-      });
+          body: JSON.stringify({
+            messages: [
+              {
+                role: 'system',
+                content: "You are an expert GitHub Actions engineer. Return ONLY a raw, valid YAML workflow for GitHub Actions based on the user's request. Do not use markdown formatting like ```yaml, just output the raw text. Do not add any conversational text."
+              },
+              { role: 'user', content: prompt }
+            ]
+          })
+        }
+      );
 
-      let yaml = aiReq.response.trim();
+      if (!aiRes.ok) {
+        return sendMessage(env, msg.chat.id, `❌ AI request failed (${aiRes.status}): ${await aiRes.text()}`);
+      }
+
+      const aiData = await aiRes.json();
+      let yaml = (aiData.result?.response || '').trim();
       
       // Cleanup markdown if the AI still included it
       if (yaml.startsWith("```")) {
