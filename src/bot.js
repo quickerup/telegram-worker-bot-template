@@ -122,6 +122,29 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
 
       await sendMessage(env, msg.chat.id, `✍️ Generated workflow. Committing to \`${path}\` on \`${repo}\`...`);
 
+      // Auto-provision the repository if it doesn't exist (e.g., bot-sandbox)
+      const repoCheck = await fetch(`https://api.github.com/repos/${repo}`, {
+        headers: {
+          "Authorization": `Bearer ${env.GHPAT}`,
+          "User-Agent": "Cloudflare-Worker-Telegram-Bot"
+        }
+      });
+      
+      if (repoCheck.status === 404) {
+        const repoName = repo.split('/')[1];
+        await fetch(`https://api.github.com/user/repos`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.GHPAT}`,
+            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name: repoName, private: true, auto_init: true })
+        });
+        // Wait a couple seconds for GitHub to finish provisioning the repo
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
       // Safe base64 encoding for UTF-8 string
       const contentBase64 = btoa(unescape(encodeURIComponent(yaml)));
 
