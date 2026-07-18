@@ -1,0 +1,54 @@
+const telegramApi = (token) => `https://api.telegram.org/bot${token}`;
+
+export async function sendMessage(env, chatId, text, extra = {}) {
+  const res = await fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, ...extra }),
+  });
+  if (!res.ok) {
+    console.error('sendMessage failed', await res.text());
+  }
+  return res;
+}
+
+// ---------------------------------------------------------------------
+// Add your own commands here. Each key is a /command (no slash),
+// value is an async handler that receives (env, message).
+// This is the main place you'll edit to build your bot.
+// ---------------------------------------------------------------------
+const commands = {
+  start: async (env, msg) => {
+    await sendMessage(
+      env,
+      msg.chat.id,
+      "Hey! I'm alive and running on Cloudflare Workers. Send me anything and I'll echo it back. Try /help."
+    );
+  },
+  help: async (env, msg) => {
+    await sendMessage(
+      env,
+      msg.chat.id,
+      'Commands:\n/start - greet\n/help - this message\n\nAnything else you send gets echoed back. Add more commands in src/bot.js.'
+    );
+  },
+};
+
+export async function handleUpdate(update, env) {
+  const msg = update.message;
+  if (!msg || !msg.text) return;
+
+  const text = msg.text.trim();
+
+  if (text.startsWith('/')) {
+    const command = text.slice(1).split(/[\s@]/)[0].toLowerCase();
+    const handler = commands[command];
+    if (handler) {
+      await handler(env, msg);
+      return;
+    }
+  }
+
+  // Default fallback: echo whatever was sent
+  await sendMessage(env, msg.chat.id, `You said: ${text}`);
+}
