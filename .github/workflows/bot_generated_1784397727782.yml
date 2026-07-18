@@ -1,0 +1,11 @@
+name: Bot Ping
+on:
+  workflow_dispatch:
+  repository_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Print Message
+      run: |
+        echo "Cloudflare and AI integration is live!"
