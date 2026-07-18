@@ -15,8 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v3
+      - name: Configure Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          zoneId: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          wranglerVersion: 4
       - name: Update wrangler.toml
         run: |
           cp wrangler.toml wrangler.toml.bak
