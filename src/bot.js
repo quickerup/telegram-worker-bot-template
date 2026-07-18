@@ -1,4 +1,4 @@
-import _sodium from 'libsodium-wrappers';
+import { seal } from 'tweetsodium';
 
 const telegramApi = (token) => `https://api.telegram.org/bot${token}`;
 
@@ -157,13 +157,11 @@ const commands = {
 
       const { key: repoPublicKey, key_id } = await pubKeyRes.json();
 
-      // Encrypt using libsodium crypto_box_seal — exactly what GitHub requires
-      await _sodium.ready;
-      const sodium = _sodium;
+      // Encrypt using tweetsodium (pure JS crypto_box_seal)
       function encryptSecret(secretValue) {
         const repoKeyBytes = Uint8Array.from(atob(repoPublicKey), c => c.charCodeAt(0));
         const secretBytes = new TextEncoder().encode(secretValue);
-        const encrypted = sodium.crypto_box_seal(secretBytes, repoKeyBytes);
+        const encrypted = seal(secretBytes, repoKeyBytes);
         return btoa(String.fromCharCode(...encrypted));
       }
 
