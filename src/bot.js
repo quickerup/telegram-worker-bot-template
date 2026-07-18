@@ -33,8 +33,8 @@ const commands = {
     );
   },
   trigger: async (env, msg) => {
-    if (!env.GITHUB_PAT) {
-      return sendMessage(env, msg.chat.id, "Please set GITHUB_PAT secret first.");
+    if (!env.GHPAT) {
+      return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
     }
     
     // Parse arguments: /trigger owner/repo workflow.yml branch
@@ -49,7 +49,7 @@ const commands = {
       method: 'POST',
       headers: {
         'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `Bearer ${env.GITHUB_PAT}`,
+        'Authorization': `Bearer ${env.GHPAT}`,
         'User-Agent': 'Cloudflare-Worker-Telegram-Bot',
         'Content-Type': 'application/json'
       },

@@ -28,11 +28,11 @@ jobs:
           secrets: |
             TELEGRAM_BOT_TOKEN
             TELEGRAM_WEBHOOK_SECRET
-            GITHUB_PAT
+            GHPAT
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          GHPAT: ${{ secrets.GHPAT }}
 
       # Registers your Worker's public URL as the Telegram webhook.
       # WORKER_URL is a repo VARIABLE (not secret) — see README for how to set it.
