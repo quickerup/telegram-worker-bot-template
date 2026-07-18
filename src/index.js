@@ -25,8 +25,8 @@ export default {
     // Provide a protected endpoint to read logs live
     if (url.pathname === '/logs' && request.method === 'GET') {
       const auth = request.headers.get('Authorization');
-      // Protect it with the webhook secret as a token
-      if (auth !== `Bearer ${env.TELEGRAM_WEBHOOK_SECRET}`) {
+      // Protect it with your Telegram Bot Token
+      if (auth !== `Bearer ${env.TELEGRAM_BOT_TOKEN}`) {
         return new Response('Unauthorized', { status: 401 });
       }
       return new Response(logBuffer.join('\n') + '\n', {
