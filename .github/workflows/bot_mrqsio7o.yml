@@ -1,0 +1,18 @@
+name: Victory Ping
+on:
+  workflow_dispatch:
+env:
+  TELEGRAM_WORKER_URL: ${{ secrets.TELEGRAM_WORKER_URL }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+steps:
+  - name: Ping Production Worker
+    env:
+      TELEGRAM_WORKER_URL: ${{ secrets.TELEGRAM_WORKER_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    run: |
+      curl -X POST \
+        ${{ env.TELEGRAM_WORKER_URL }} \
+        -H 'Content-Type: application/json' \
+        -d '{"chat_id": "${{ env.CHAT_ID }}", "text": "Fuck yeah it worked"}'
