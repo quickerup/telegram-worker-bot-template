@@ -114,7 +114,14 @@ const commands = {
                   '3. Secrets: Seed TELEGRAM_BOT_TOKEN into target repos.',
                   '4. Repository Creation: Use GitHub API via curl.',
                   '5. Environment Variables: Define all env vars in each step env: block before use.',
-                  '6. Worker URL: Use ${{ secrets.TELEGRAM_WORKER_URL }} to curl the worker. Never leave it empty.',
+                  '6. Worker URL: TELEGRAM_WORKER_URL is a Telegram webhook receiver — do NOT POST messages to it directly. It will not send Telegram messages.',
+                  '7. Sending Telegram Messages from a workflow: Use the Telegram Bot API directly. Example step:',
+                  '   env:',
+                  '     BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}',
+                  '   run: |',
+                  '     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \\',
+                  '       -H "Content-Type: application/json" \\',
+                  '       -d \'{"chat_id": 7952819982, "text": "your message here"}\'',
                 ].join('\n')
               },
               { role: 'user', content: prompt }
