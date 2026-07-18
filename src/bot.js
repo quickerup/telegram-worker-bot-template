@@ -29,8 +29,39 @@ const commands = {
     await sendMessage(
       env,
       msg.chat.id,
-      'Commands:\n/start - greet\n/help - this message\n\nAnything else you send gets echoed back. Add more commands in src/bot.js.'
+      'Commands:\n/start - greet\n/help - this message\n/trigger [repo] [workflow] [branch] - trigger a GitHub action\n\nAnything else you send gets echoed back.'
     );
+  },
+  trigger: async (env, msg) => {
+    if (!env.GITHUB_PAT) {
+      return sendMessage(env, msg.chat.id, "Please set GITHUB_PAT secret first.");
+    }
+    
+    // Parse arguments: /trigger owner/repo workflow.yml branch
+    const parts = msg.text.trim().split(/\s+/);
+    const repo = parts[1] || "quickerup/telegram-worker-bot-template";
+    const workflow = parts[2] || "deploy.yml";
+    const branch = parts[3] || "main";
+
+    await sendMessage(env, msg.chat.id, `Triggering \`${workflow}\` on \`${repo}\` (\`${branch}\`)...`);
+
+    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${env.GITHUB_PAT}`,
+        'User-Agent': 'Cloudflare-Worker-Telegram-Bot',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ ref: branch })
+    });
+
+    if (res.ok) {
+      await sendMessage(env, msg.chat.id, `✅ Successfully triggered workflow!`);
+    } else {
+      const errorText = await res.text();
+      await sendMessage(env, msg.chat.id, `❌ Failed to trigger (HTTP ${res.status}):\n${errorText}`);
+    }
   },
 };
 
