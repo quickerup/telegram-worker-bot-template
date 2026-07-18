@@ -1,0 +1,15 @@
+name: Telegram Test Button
+on:
+  workflow_dispatch:
+jobs:
+  send-test-button:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send test button message
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${CHAT_ID}\", \"text\": \"Bot health check\", \"reply_markup\": {\"inline_keyboard\": [[{\"text\": \"Test\", \"callback_data\": \"test_ping\"}]]}}"
