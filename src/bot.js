@@ -14,6 +14,136 @@ export async function sendMessage(env, chatId, text, extra = {}) {
   return res;
 }
 
+
+async function saveAndConfigureWorkflow(env, msg, repo, yaml) {
+  const shortTime = Date.now().toString(36);
+  const filename = `bot_${shortTime}.yml`;
+  const path = `.github/workflows/${filename}`;
+
+  // Validate basic YAML structure before committing
+  const hasOn = /^on[: ]/m.test(yaml) || /^"on"[: ]/m.test(yaml);
+  const hasJobs = /^jobs:/m.test(yaml);
+  const hasSteps = /^\s+steps:/m.test(yaml);
+  const stepsAtTopLevel = /^steps:/m.test(yaml);
+
+  if (!hasJobs || stepsAtTopLevel) {
+    console.error('[Validation] AI returned malformed YAML — missing jobs: or steps at top level');
+    return sendMessage(env, msg.chat.id,
+      '❌ Generated invalid YAML structure (missing `jobs:` or `steps:` at wrong level). Please try again.');
+  }
+  if (!hasOn) {
+    console.warn('[Validation] YAML missing on: trigger — still committing but may fail');
+  }
+
+  await sendMessage(env, msg.chat.id, `✍️ Committing workflow to \`${path}\` on \`${repo}\`...`);
+
+  // Auto-provision the repository if it doesn't exist
+  const repoCheck = await fetch(`https://api.github.com/repos/${repo}`, {
+    headers: {
+      "Authorization": `Bearer ${env.GHPAT}`,
+      "User-Agent": "Cloudflare-Worker-Telegram-Bot"
+    }
+  });
+  
+  if (repoCheck.status === 404) {
+    console.log(`[GitHub] Repo ${repo} not found. Auto-provisioning...`);
+    const repoName = repo.split('/')[1];
+    const createRes = await fetch(`https://api.github.com/user/repos`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.GHPAT}`,
+        "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ name: repoName, private: true, auto_init: true })
+    });
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  // Safe base64 encoding for UTF-8 string
+  const contentBase64 = btoa(unescape(encodeURIComponent(yaml)));
+
+  const ghRes = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${env.GHPAT}`,
+      "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+      "Content-Type": "application/json",
+      "Accept": "application/vnd.github.v3+json"
+    },
+    body: JSON.stringify({
+      message: `Add workflow via Telegram Bot`,
+      content: contentBase64
+    })
+  });
+
+  if (!ghRes.ok) {
+    return sendMessage(env, msg.chat.id, `❌ Failed to commit to GitHub: ${await ghRes.text()}`);
+  }
+
+  await sendMessage(env, msg.chat.id, `✅ Workflow \`${filename}\` committed! Seeding Cloudflare secrets into \`${repo}\`...`);
+
+  if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ACCOUNT_ID) {
+    return sendMessage(env, msg.chat.id, `⚠️ Done, but CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not set in bot env — add them manually to \`${repo}\` secrets.`);
+  }
+
+  const pubKeyRes = await fetch(`https://api.github.com/repos/${repo}/actions/secrets/public-key`, {
+    headers: {
+      "Authorization": `Bearer ${env.GHPAT}`,
+      "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+      "Accept": "application/vnd.github.v3+json"
+    }
+  });
+
+  if (!pubKeyRes.ok) {
+    return sendMessage(env, msg.chat.id, `⚠️ Workflow committed but couldn't fetch repo public key: ${await pubKeyRes.text()}`);
+  }
+
+  const { key: repoPublicKey, key_id } = await pubKeyRes.json();
+
+  function encryptSecret(secretValue) {
+    const repoKeyBytes = Uint8Array.from(atob(repoPublicKey), c => c.charCodeAt(0));
+    const secretBytes = new TextEncoder().encode(secretValue);
+    const encrypted = seal(secretBytes, repoKeyBytes);
+    return btoa(String.fromCharCode(...encrypted));
+  }
+
+  async function pushSecret(name, value) {
+    const encrypted = encryptSecret(value);
+    const r = await fetch(`https://api.github.com/repos/${repo}/actions/secrets/${name}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${env.GHPAT}`,
+        "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ encrypted_value: encrypted, key_id })
+    });
+    return r.ok ? `✅ ${name}` : `❌ ${name} (${r.status})`;
+  }
+
+  const workerName = (env.WORKER_NAME || 'telegram-worker-bot-template');
+  const workerUrl = `https://${workerName}.${workerName}.workers.dev`;
+
+  const results = await Promise.all([
+    pushSecret("CLOUDFLARE_API_TOKEN", env.CLOUDFLARE_API_TOKEN),
+    pushSecret("CLOUDFLARE_ACCOUNT_ID", env.CLOUDFLARE_ACCOUNT_ID),
+    pushSecret("TELEGRAM_WORKER_URL", workerUrl),
+  ]);
+
+  await sendMessage(env, msg.chat.id,
+    `🔑 Secrets pushed to \`${repo}\`:\n${results.join('\n')}\n\nYour workflow is ready to deploy to Cloudflare! 🚀`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🚀 Trigger Workflow", callback_data: `trig:${repo}:${filename}` }
+        ]]
+      }
+    }
+  );
+}
+
 // ---------------------------------------------------------------------
 // Add your own commands here. Each key is a /command (no slash),
 // value is an async handler that receives (env, message).
@@ -73,6 +203,22 @@ const commands = {
       const errorText = await res.text();
       await sendMessage(env, msg.chat.id, `❌ Failed to trigger (HTTP ${res.status}):\n${errorText}`);
     }
+  },
+  import: async (env, msg) => {
+    console.log(`[Command] /import from user ${msg.from.id}`);
+    if (!env.GHPAT) {
+      return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
+    }
+    const match = msg.text.trim().match(/^\/import\s+([^\s]+)\s+([\s\S]+)$/);
+    if (!match) {
+      return sendMessage(env, msg.chat.id, "Usage:\n/import [owner/repo]\n<paste yaml here>");
+    }
+    const repo = match[1];
+    let yaml = match[2].trim();
+    if (yaml.startsWith("```")) {
+      yaml = yaml.replace(/^```[a-z]*\n?/, "").replace(/\n```$/, "");
+    }
+    await saveAndConfigureWorkflow(env, msg, repo, yaml);
   },
   makeworkflow: async (env, msg) => {
     console.log(`[Command] /makeworkflow from user ${msg.from.id}: ${msg.text}`);
@@ -156,137 +302,7 @@ const commands = {
         yaml = yaml.replace(/^```[a-z]*\n?/, "").replace(/\n```$/, "");
       }
 
-      const shortTime = Date.now().toString(36);
-      const filename = `bot_${shortTime}.yml`;
-      const path = `.github/workflows/${filename}`;
-
-      // Validate basic YAML structure before committing
-      const hasOn = /^on[: ]/m.test(yaml) || /^"on"[: ]/m.test(yaml);
-      const hasJobs = /^jobs:/m.test(yaml);
-      const hasSteps = /^\s+steps:/m.test(yaml);
-      const stepsAtTopLevel = /^steps:/m.test(yaml);
-
-      if (!hasJobs || stepsAtTopLevel) {
-        console.error('[Validation] AI returned malformed YAML — missing jobs: or steps at top level');
-        return sendMessage(env, msg.chat.id,
-          '❌ AI generated invalid YAML structure (missing `jobs:` or `steps:` at wrong level). Please try again with a more specific description.');
-      }
-      if (!hasOn) {
-        console.warn('[Validation] AI returned YAML missing on: trigger — still committing but may fail');
-      }
-
-      await sendMessage(env, msg.chat.id, `✍️ Generated workflow. Committing to \`${path}\` on \`${repo}\`...`);
-
-      // Auto-provision the repository if it doesn't exist (e.g., bot-sandbox)
-      const repoCheck = await fetch(`https://api.github.com/repos/${repo}`, {
-        headers: {
-          "Authorization": `Bearer ${env.GHPAT}`,
-          "User-Agent": "Cloudflare-Worker-Telegram-Bot"
-        }
-      });
-      
-      if (repoCheck.status === 404) {
-        console.log(`[GitHub] Repo ${repo} not found. Auto-provisioning...`);
-        const repoName = repo.split('/')[1];
-        const createRes = await fetch(`https://api.github.com/user/repos`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${env.GHPAT}`,
-            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ name: repoName, private: true, auto_init: true })
-        });
-        // Wait a couple seconds for GitHub to finish provisioning the repo
-        await new Promise(r => setTimeout(r, 2000));
-      }
-
-      // Safe base64 encoding for UTF-8 string
-      const contentBase64 = btoa(unescape(encodeURIComponent(yaml)));
-
-      const ghRes = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${env.GHPAT}`,
-          "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-          "Content-Type": "application/json",
-          "Accept": "application/vnd.github.v3+json"
-        },
-        body: JSON.stringify({
-          message: `Add workflow generated by Telegram Bot (AI)`,
-          content: contentBase64
-        })
-      });
-
-      if (!ghRes.ok) {
-        return sendMessage(env, msg.chat.id, `❌ Failed to commit to GitHub: ${await ghRes.text()}`);
-      }
-
-      await sendMessage(env, msg.chat.id, `✅ Workflow \`${filename}\` committed! Seeding Cloudflare secrets into \`${repo}\`...`);
-
-      if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ACCOUNT_ID) {
-        return sendMessage(env, msg.chat.id, `⚠️ Done, but CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not set in bot env — add them manually to \`${repo}\` secrets.`);
-      }
-
-      // Fetch the repo's public key needed to encrypt secrets for the GitHub API
-      const pubKeyRes = await fetch(`https://api.github.com/repos/${repo}/actions/secrets/public-key`, {
-        headers: {
-          "Authorization": `Bearer ${env.GHPAT}`,
-          "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-          "Accept": "application/vnd.github.v3+json"
-        }
-      });
-
-      if (!pubKeyRes.ok) {
-        return sendMessage(env, msg.chat.id, `⚠️ Workflow committed but couldn't fetch repo public key: ${await pubKeyRes.text()}`);
-      }
-
-      const { key: repoPublicKey, key_id } = await pubKeyRes.json();
-
-      // Encrypt using tweetsodium (pure JS crypto_box_seal)
-      function encryptSecret(secretValue) {
-        const repoKeyBytes = Uint8Array.from(atob(repoPublicKey), c => c.charCodeAt(0));
-        const secretBytes = new TextEncoder().encode(secretValue);
-        const encrypted = seal(secretBytes, repoKeyBytes);
-        return btoa(String.fromCharCode(...encrypted));
-      }
-
-      // Push each secret to the target repo
-      async function pushSecret(name, value) {
-        const encrypted = encryptSecret(value);
-        const r = await fetch(`https://api.github.com/repos/${repo}/actions/secrets/${name}`, {
-          method: "PUT",
-          headers: {
-            "Authorization": `Bearer ${env.GHPAT}`,
-            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-            "Accept": "application/vnd.github.v3+json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ encrypted_value: encrypted, key_id })
-        });
-        return r.ok ? `✅ ${name}` : `❌ ${name} (${r.status})`;
-      }
-
-      // Build the worker URL to also seed as a secret
-      const workerName = (env.WORKER_NAME || 'telegram-worker-bot-template');
-      const workerUrl = `https://${workerName}.${workerName}.workers.dev`;
-
-      const results = await Promise.all([
-        pushSecret("CLOUDFLARE_API_TOKEN", env.CLOUDFLARE_API_TOKEN),
-        pushSecret("CLOUDFLARE_ACCOUNT_ID", env.CLOUDFLARE_ACCOUNT_ID),
-        pushSecret("TELEGRAM_WORKER_URL", workerUrl),
-      ]);
-
-      await sendMessage(env, msg.chat.id,
-        `🔑 Secrets pushed to \`${repo}\`:\n${results.join('\n')}\n\nYour workflow is ready to deploy to Cloudflare! 🚀`,
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "🚀 Trigger Workflow", callback_data: `trig:${repo}:${filename}` }
-            ]]
-          }
-        }
-      );
+      await saveAndConfigureWorkflow(env, msg, repo, yaml);
       console.log(`[makeworkflow] Completed successfully for ${repo}`);
 
     } catch (e) {
