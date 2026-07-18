@@ -101,7 +101,8 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
 2. Wrangler Isolation: Before pushing, you MUST update wrangler.toml in the target repo to change the 'name' field so it does not overwrite the production worker.
 3. Secrets: Ensure the target repo gets its own TELEGRAM_BOT_TOKEN via GitHub Secrets.
 4. Repository Creation: If creating a repo, use the GitHub API via curl.
-5. Environment Variables: Always define necessary environment variables (e.g. \`env: TELEGRAM_WORKER_URL: \${{ secrets.TELEGRAM_WORKER_URL }}\`) in the workflow step before using them in commands like curl.`
+5. Environment Variables: Always define necessary environment variables in each step's `env:` block before using them in shell commands.
+6. Worker URL: The Cloudflare Worker URL is always available as \`\${{ secrets.TELEGRAM_WORKER_URL }}\`. Use this when any step needs to curl or ping the worker. Never leave TELEGRAM_WORKER_URL empty.`
               },
               { role: 'user', content: prompt }
             ]
@@ -218,9 +219,14 @@ If the user asks to clone, duplicate, or deploy to a new repository, you MUST fo
         return r.ok ? `✅ ${name}` : `❌ ${name} (${r.status})`;
       }
 
+      // Build the worker URL to also seed as a secret
+      const workerName = (env.WORKER_NAME || 'telegram-worker-bot-template');
+      const workerUrl = `https://${workerName}.${workerName}.workers.dev`;
+
       const results = await Promise.all([
         pushSecret("CLOUDFLARE_API_TOKEN", env.CLOUDFLARE_API_TOKEN),
         pushSecret("CLOUDFLARE_ACCOUNT_ID", env.CLOUDFLARE_ACCOUNT_ID),
+        pushSecret("TELEGRAM_WORKER_URL", workerUrl),
       ]);
 
       await sendMessage(env, msg.chat.id,
