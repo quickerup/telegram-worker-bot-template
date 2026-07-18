@@ -1,0 +1,9 @@
+name: My Custom Workflow
+on:
+  workflow_dispatch:
+jobs:
+  my-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping
+        run: echo "Hello world"
