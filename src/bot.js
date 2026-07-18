@@ -163,7 +163,7 @@ const commands = {
     await sendMessage(
       env,
       msg.chat.id,
-      'Commands:\n/start - greet\n/help - this message\n/trigger [repo] [workflow] [branch] - trigger a GitHub action\n/makeworkflow [repo] [description] - use AI to design and commit a new workflow\n\nAnything else you send gets echoed back.'
+      'Commands:\n/start - greet\n/help - this message\n/trigger [repo] [workflow] [branch] - trigger a GitHub action\n/makeworkflow [repo] [description] - use AI to design and commit a new workflow\n/import [repo] <yaml> - import a premade workflow file\n\nAnything else you send gets echoed back.'
     );
   },
   trigger: async (env, msg) => {
