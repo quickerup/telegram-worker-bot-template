@@ -1,0 +1,33 @@
+name: Update Bot Worker Routing Code
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+jobs:
+  update-routing-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Update routing code
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          curl -s -X GET \
+          https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Content-Type: application/json" > workflows.json
+          python update_routing_code.py
+      - name: Push changes
+        uses: cpina/github-action-push-to-another-repository@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          source_repo: ${{ github.event.repository.name }}
+          source_branch: main
+          target_repo: ${{ github.event.repository.name }}
+          target_branch: main
+          force: true
+      - name: Send Telegram message
