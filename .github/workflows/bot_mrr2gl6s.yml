@@ -1,0 +1,44 @@
+name: Workflow Sandbox Tester
+on:
+  workflow_dispatch:
+    inputs:
+      test_payload:
+        description: 'Mock data or code to test'
+        required: true
+        default: '{"status": "dry_run"}'
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate and Simulate
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MOCK_DATA: ${{ github.event.inputs.test_payload }}
+        run: |
+          echo "📦 Entering Sandbox Mode..."
+          
+          # 1. Simulate a syntax/JSON validation check
+          if echo "$MOCK_DATA" | jq . >/dev/null 2>&1; then
+             STATUS="✅ VALID JSON SYNTAX"
+          else
+             STATUS="❌ INVALID JSON SYNTAX"
+          fi
+          
+          # 2. Build a safe simulation summary
+          TEXT_PAYLOAD="🧪 *Sandbox Simulation Complete*
+
+*Status:* $STATUS
+*Input Received:* 
+\\\json
+$MOCK_DATA
+\\\
+
+If this looks correct, you are clear to push this logic to your live worker production nodes."
+
+          # 3. Send results to Telegram with action buttons
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=$TEXT_PAYLOAD" \
+            --data-urlencode "parse_mode=Markdown" \
+            --data-urlencode "reply_markup={\"inline_keyboard\": [[{\"text\": \"🚀 Deploy to Prod\", \"callback_data\": \"sandbox_deploy\"}, {\"text\": \"🗑️ Abort\", \"callback_data\": \"sandbox_abort\"}]]}"
