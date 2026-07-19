@@ -1,0 +1,69 @@
+name: Global Failure Notifier
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Deploy Telegram Bot"
+      - "Telegram Command Runner"
+      - "Multi-Media Endless Loop Broadcast"
+      - "Image Only Endless Loop"
+      - "Live Bitcoin Tracker"
+    types: [completed]
+
+permissions:
+  issues: write
+  actions: read
+
+jobs:
+  notify-on-failure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - name: Notify on Failure via Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name || 'manual test' }}
+          RUN_URL: ${{ github.event.workflow_run.html_url || format('https://github.com/{0}/actions/runs/{1}', github.repository, github.run_id) }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${CHAT_ID}\", \"text\": \"❌ Workflow failed: ${WORKFLOW_NAME}\n${RUN_URL}\"}"
+
+      - name: Create issue for failed workflow run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name || 'manual test' }}
+          RUN_URL: ${{ github.event.workflow_run.html_url || format('https://github.com/{0}/actions/runs/{1}', github.repository, github.run_id) }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number || github.run_number }}
+          BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ACTOR: ${{ github.event.workflow_run.actor.login || github.actor }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create "automatic issue report" \
+            --color "E99695" \
+            --description "Automatically created for failed GitHub Actions runs" \
+            --force
+
+          cat > issue-body.md <<ISSUE_BODY
+          ### ❌ GitHub Actions failure
+
+          A workflow run failed and needs attention.
+
+          - **Repository:** \`${REPO}\`
+          - **Workflow:** \`${WORKFLOW_NAME}\`
+          - **Run:** [#${RUN_NUMBER}](${RUN_URL})
+          - **Branch:** \`${BRANCH}\`
+          - **Commit:** \`${COMMIT_SHA}\`
+          - **Actor:** \`${ACTOR}\`
+
+          Review the failed run logs and close this issue when the failure is resolved.
+          ISSUE_BODY
+
+          gh issue create \
+            --repo "$REPO" \
+            --title "🚨 Action failure: ${WORKFLOW_NAME} run #${RUN_NUMBER}" \
+            --body-file issue-body.md \
+            --label "automatic issue report"
