@@ -1,6 +1,7 @@
 import { seal } from 'tweetsodium';
 
 const telegramApi = (token) => `https://api.telegram.org/bot${token}`;
+const selectedBranchByChat = new Map();
 
 export async function sendMessage(env, chatId, text, extra = {}) {
   const res = await fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/sendMessage`, {
@@ -69,6 +70,38 @@ async function triggerWorkflow(env, repo, workflow, branch) {
   }
 
   return { ok: false, message: `❌ Failed to trigger (HTTP ${res.status}):\n${await res.text()}` };
+}
+
+async function handleBranchSelectionCallback(env, cb) {
+  const prefix = 'select_branch:';
+  const branch = cb.data.slice(prefix.length).trim();
+
+  if (!branch) {
+    await answerCallbackQuery(env, cb.id, 'Invalid branch selection');
+    return;
+  }
+
+  const confirmation = `🎯 Switched context to branch: ${branch}`;
+  await answerCallbackQuery(env, cb.id, confirmation);
+
+  const chatId = cb.message?.chat?.id;
+  if (!chatId) {
+    return;
+  }
+
+  selectedBranchByChat.set(String(chatId), branch);
+  await sendMessage(env, chatId, confirmation);
+
+  const repo = actionsRepo(env);
+  const workflow = env.GITHUB_WORKFLOW || 'deploy.yml';
+  const triggerMessage = {
+    ...cb.message,
+    text: `/trigger ${repo} ${workflow} ${branch}`,
+    from: cb.from || cb.message.from,
+    chat: cb.message.chat
+  };
+
+  await commands.trigger(env, triggerMessage);
 }
 
 async function handleWorkflowCallback(env, cb) {
@@ -304,7 +337,7 @@ const commands = {
     const parts = msg.text.trim().split(/\s+/);
     const repo = parts[1] || "quickerup/telegram-worker-bot-template";
     const workflow = parts[2] || "deploy.yml";
-    const branch = parts[3] || "main";
+    const branch = parts[3] || selectedBranchByChat.get(String(msg.chat.id)) || env.GITHUB_REF || "main";
 
     await sendMessage(env, msg.chat.id, `Triggering \`${workflow}\` on \`${repo}\` (\`${branch}\`)...`);
     const result = await triggerWorkflow(env, repo, workflow, branch);
@@ -432,7 +465,9 @@ export async function handleUpdate(update, env) {
     if (cb.message && cb.message.chat.id !== ALLOWED_CHAT_ID) return;
     
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
-    if (cb.data && cb.data.startsWith('trig:')) {
+    if (cb.data && cb.data.startsWith('select_branch:')) {
+      await handleBranchSelectionCallback(env, cb);
+    } else if (cb.data && cb.data.startsWith('trig:')) {
       const match = cb.data.match(/^trig:([^:]+\/[^:]+):([^:]+)(?::(.+))?$/);
       if (!match) {
         await answerCallbackQuery(env, cb.id, 'Invalid trigger action');
