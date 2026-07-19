@@ -1,4 +1,3 @@
-.github/workflows/transformer.yml
 name: Dynamic Transformation Broadcast
 on:
   workflow_dispatch:
