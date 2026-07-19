@@ -1,6 +1,7 @@
 import { seal } from 'tweetsodium';
 
 const telegramApi = (token) => `https://api.telegram.org/bot${token}`;
+const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 export async function sendMessage(env, chatId, text, extra = {}) {
   const res = await fetch(`${telegramApi(env.TELEGRAM_BOT_TOKEN)}/sendMessage`, {
@@ -32,6 +33,27 @@ async function editMessageReplyMarkup(env, chatId, messageId, replyMarkup) {
 
 function actionsRepo(env) {
   return env.GITHUB_REPOSITORY || 'quickerup/telegram-worker-bot-template';
+}
+
+function branchContextKey(chatId) {
+  return `branch-context:${chatId}`;
+}
+
+async function getSelectedBranch(env, chatId) {
+  if (!env.BRANCH_CONTEXT_KV) {
+    return undefined;
+  }
+
+  return env.BRANCH_CONTEXT_KV.get(branchContextKey(chatId));
+}
+
+async function setSelectedBranch(env, chatId, branch) {
+  if (!env.BRANCH_CONTEXT_KV) {
+    console.warn('BRANCH_CONTEXT_KV binding is not configured; branch context will not persist.');
+    return;
+  }
+
+  await env.BRANCH_CONTEXT_KV.put(branchContextKey(chatId), branch);
 }
 
 async function githubRequest(env, path, options = {}) {
@@ -69,6 +91,38 @@ async function triggerWorkflow(env, repo, workflow, branch) {
   }
 
   return { ok: false, message: `❌ Failed to trigger (HTTP ${res.status}):\n${await res.text()}` };
+}
+
+async function handleBranchSelectionCallback(env, cb) {
+  const prefix = 'select_branch:';
+  const branch = cb.data.slice(prefix.length).trim();
+
+  if (!branch || !SAFE_BRANCH_PATTERN.test(branch)) {
+    await answerCallbackQuery(env, cb.id, 'Invalid branch selection');
+    return;
+  }
+
+  const confirmation = `🎯 Switched context to branch: ${branch}`;
+  await answerCallbackQuery(env, cb.id, confirmation);
+
+  const chatId = cb.message?.chat?.id;
+  if (!chatId) {
+    return;
+  }
+
+  await setSelectedBranch(env, chatId, branch);
+  await sendMessage(env, chatId, confirmation);
+
+  const repo = actionsRepo(env);
+  const workflow = env.GITHUB_WORKFLOW || 'deploy.yml';
+  const triggerMessage = {
+    ...cb.message,
+    text: `/trigger ${repo} ${workflow} ${branch}`,
+    from: cb.from || cb.message.from,
+    chat: cb.message.chat
+  };
+
+  await commands.trigger(env, triggerMessage);
 }
 
 async function handleWorkflowCallback(env, cb) {
@@ -304,7 +358,7 @@ const commands = {
     const parts = msg.text.trim().split(/\s+/);
     const repo = parts[1] || "quickerup/telegram-worker-bot-template";
     const workflow = parts[2] || "deploy.yml";
-    const branch = parts[3] || "main";
+    const branch = parts[3] || await getSelectedBranch(env, msg.chat.id) || env.GITHUB_REF || "main";
 
     await sendMessage(env, msg.chat.id, `Triggering \`${workflow}\` on \`${repo}\` (\`${branch}\`)...`);
     const result = await triggerWorkflow(env, repo, workflow, branch);
@@ -432,7 +486,9 @@ export async function handleUpdate(update, env) {
     if (cb.message && cb.message.chat.id !== ALLOWED_CHAT_ID) return;
     
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
-    if (cb.data && cb.data.startsWith('trig:')) {
+    if (cb.data && cb.data.startsWith('select_branch:')) {
+      await handleBranchSelectionCallback(env, cb);
+    } else if (cb.data && cb.data.startsWith('trig:')) {
       const match = cb.data.match(/^trig:([^:]+\/[^:]+):([^:]+)(?::(.+))?$/);
       if (!match) {
         await answerCallbackQuery(env, cb.id, 'Invalid trigger action');
