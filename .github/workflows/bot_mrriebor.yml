@@ -1,4 +1,3 @@
-.github/workflows/bot_mrriczw1.yml
 name: Broadcast
 on:
   push:
