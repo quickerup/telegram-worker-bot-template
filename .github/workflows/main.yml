@@ -1,0 +1,47 @@
+name: Main
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-and-blast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create Multi-Media Script
+        run: |
+          cat << 'EOF' > script.js
+          async function run() {
+            try {
+              const response = await fetch("https://drive.google.com/drive/folders/1w7y-2Wl8wsKLy5c0ovZiD19h83x_Vq_z");
+              const html = await response.text();
+              const matches = [...new Set(html.match(/[a-zA-Z0-9_-]{33}/g))];
+              if (!matches.length) process.exit(1);
+              
+              const randomId = matches[Math.floor(Math.random() * matches.length)];
+              const payload = {
+                chat_id: process.env.CHAT_ID,
+                document: "https://drive.google.com/uc?export=download&id=" + randomId,
+                caption: "🎲 *Random Media Pulled*",
+                parse_mode: "Markdown"
+              };
+              
+              const res = await fetch("https://api.telegram.org/bot" + process.env.BOT_TOKEN + "/sendDocument", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+              });
+              if (!res.ok) process.exit(1);
+            } catch (err) { process.exit(1); }
+          }
+          run();
+          EOF
+
+      - name: Run Script
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node script.js
