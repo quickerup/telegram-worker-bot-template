@@ -1,0 +1,90 @@
+name: Endless Loop Drive Broadcast
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-and-blast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: System Environment Diagnostics
+        run: |
+          echo "=== Starting Workflow Operations Center ==="
+          echo "Timestamp: $(date -u)"
+          echo "Target Node: GitHub Virtual Environment Runner"
+          echo "System Architecture Tools Check:"
+          curl --version | head -n 1
+          jq --version
+          grep --version | head -n 1
+
+      - name: Fetch and Analyze Remote Media Stream
+        id: media_scanner
+        env:
+          FOLDER_URL: "https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn"
+        run: |
+          echo "Connecting to remote asset directory..."
+          FOLDER_HTML=$(curl -sL "${FOLDER_URL}")
+          
+          if [ -z "$FOLDER_HTML" ]; then
+            echo "❌ Error: Failed to establish data stream connection from the storage matrix node."
+            exit 1
+          fi
+          
+          echo "Data stream connection verified. Compiling index signatures..."
+          FILE_IDS=$(echo "$FOLDER_HTML" | grep -oE '"[a-zA-Z0-9_-]{33}"' | tr -d '"' | sort -u)
+          
+          if [ -z "$FILE_IDS" ]; then
+            echo "❌ Error: Extraction fault. Zero active asset IDs recovered from HTML index."
+            exit 1
+          fi
+          
+          TOTAL_COUNT=$(echo "$FILE_IDS" | wc -l)
+          echo "=== Asset Scan Summary ==="
+          echo "Total discrete file tokens resolved: $TOTAL_COUNT"
+          
+          echo "Selecting randomized target index token..."
+          RANDOM_FILE_ID=$(echo "$FILE_IDS" | shuf -n 1)
+          echo "Target token locked: $RANDOM_FILE_ID"
+          
+          # Set the finalized target URL for the image asset bypass stream
+          FINAL_IMAGE_URL="https://drive.google.com/uc?export=download&id=${RANDOM_FILE_ID}"
+          
+          # Export to runner variables environment block
+          echo "IMAGE_URL=${FINAL_IMAGE_URL}" >> $GITHUB_ENV
+
+      - name: Construct Interface Architecture and Ship Payload
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FINAL_IMAGE_URL: ${{ env.IMAGE_URL }}
+        run: |
+          echo "Building interface container nodes..."
+          
+          # Define the target execution loop payload string parameters precisely as requested
+          CALLBACK_PAYLOAD="/trigger quickerup/telegram-worker-bot-template bot_endless_loop_drive_broadcast.yml main"
+          
+          echo "Callback payload mapping signature: $CALLBACK_PAYLOAD"
+          
+          # Format the interactive inline keyboard grid layout container via secure jq string escape methods
+          KEYBOARD=$(jq -n --arg cb "$CALLBACK_PAYLOAD" '[[{"text": "🔄 Next Random Image", "callback_data": $cb}]]')
+          
+          # Combine parameters into the ultimate standard structural payload schema
+          PAYLOAD=$(jq -n \
+            --arg chat "$CHAT_ID" \
+            --arg photo "$FINAL_IMAGE_URL" \
+            --arg caption "🎲 *Random Image Pulled From Your Drive Folder*" \
+            --argjson kb "$KEYBOARD" \
+            '{
+              chat_id: $chat, 
+              photo: $photo, 
+              caption: $caption, 
+              parse_mode: "Markdown", 
+              reply_markup: { inline_keyboard: $kb }
+            }')
+          
+          echo "Transmitting finalized data package to Telegram Edge Gateway..."
+          RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+          
+          # Validate edge confirmation string metrics
+          OK_STATUS=$(echo "$RESPONSE" | jq -r '.ok')
