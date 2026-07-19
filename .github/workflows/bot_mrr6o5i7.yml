@@ -1,0 +1,43 @@
+name: Live Config Tweak Panel
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  render-panel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Read Current Config & Update UI
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # 1. Ensure a config file exists, default to off states if it doesn't
+          if [ ! -f "bot_config.json" ]; then
+            echo '{"maintenance": "OFF", "debug_logs": "OFF"}' > bot_config.json
+          fi
+
+          # 2. Parse current states
+          MAINT_STATE=$(jq -r '.maintenance' bot_config.json)
+          DEBUG_STATE=$(jq -r '.debug_logs' bot_config.json)
+
+          # 3. Determine button labels based on current state
+          MAINT_LABEL="⚙️ Maintenance: $MAINT_STATE"
+          DEBUG_LABEL="🐞 Debug Logs: $DEBUG_STATE"
+
+          # 4. Build the Interactive Control Panel Layout
+          KEYBOARD_JSON="{\"inline_keyboard\": [
+            [{\"text\": \"$MAINT_LABEL\", \"callback_data\": \"toggle_setting:maintenance\"}],
+            [{\"text\": \"$DEBUG_LABEL\", \"callback_data\": \"toggle_setting:debug_logs\"}],
+            [{\"text\": \"🔄 Refresh Panel\", \"callback_data\": \"refresh_panel\"}]
+          ]}"
+
+          MSG="🎛️ *Live Bot Configuration Panel* %0A%0AToggle runtime environments globally in real-time:"
+
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=${MSG}" \
+            -d "parse_mode=Markdown" \
+            --data-urlencode "reply_markup=${KEYBOARD_JSON}"
