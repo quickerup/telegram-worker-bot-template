@@ -1,0 +1,38 @@
+name: Endless Loop Drive Broadcast
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-and-blast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape Folder Webpage and Pick Random Media
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          FOLDER_HTML=$(curl -sL "https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn")
+          FILE_IDS=$(echo "$FOLDER_HTML" | grep -oE '"[a-zA-Z0-9_-]{33}"' | tr -d '"' | sort -u)
+          
+          if [ -z "$FILE_IDS" ]; then
+            echo "❌ Error: Could not find any valid file IDs."
+            exit 1
+          fi
+          
+          RANDOM_FILE_ID=$(echo "$FILE_IDS" | shuf -n 1)
+          FINAL_IMAGE_URL="https://drive.google.com/uc?export=download&id=${RANDOM_FILE_ID}"
+          
+          # The button payload matches your exact command structure perfectly
+          CALLBACK_PAYLOAD="/trigger quickerup/telegram-worker-bot-template bot_endless_loop_drive_broadcast.yml main"
+          KEYBOARD=$(jq -n --arg cb "$CALLBACK_PAYLOAD" '[[{"text": "🔄 Next Random Image", "callback_data": $cb}]]')
+          
+          PAYLOAD=$(jq -n \
+            --arg chat "$CHAT_ID" \
+            --arg photo "$FINAL_IMAGE_URL" \
+            --arg caption "🎲 *Random Image Pulled From Your Drive Folder*" \
+            --argjson kb "$KEYBOARD" \
+            '{chat_id: $chat, photo: $photo, caption: $caption, parse_mode: "Markdown", reply_markup: { inline_keyboard: $kb }}')
+          
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
