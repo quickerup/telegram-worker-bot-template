@@ -1,0 +1,36 @@
+name: Weekly Security Audit and Dependency Update
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 0 * * 0
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Run security audit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm audit
+      - name: Update dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm update
+      - name: Create PR with updates
+        uses: cpina/github-action-push-to-another-repository@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: main
+          COMMIT_MESSAGE: Update dependencies
+      - name: Send success message to Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"
