@@ -1,0 +1,4 @@
+name: Bad Trigger
+on:
+  invalid_event_name: [ main ]
+jobs: build: runs-on: ubuntu-latest steps: [run: echo hi]
