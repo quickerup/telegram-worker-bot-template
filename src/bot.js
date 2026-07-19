@@ -690,6 +690,14 @@ export async function handleUpdate(update, env) {
         from: cb.from || cb.message?.from,
         chat: cb.message.chat
       });
+    } else if (cb.data === 'trigger_image_loop') {
+      await answerCallbackQuery(env, cb.id, 'Triggering image loop workflow...');
+      await commands.trigger(env, {
+        ...cb.message,
+        text: '/trigger image_only_endless_loop.yml',
+        from: cb.from || cb.message?.from,
+        chat: cb.message.chat
+      });
     } else if (cb.data && cb.data.startsWith('select_branch:')) {
       await handleBranchSelectionCallback(env, cb);
     } else if (cb.data && cb.data.startsWith('delete_branch:')) {
