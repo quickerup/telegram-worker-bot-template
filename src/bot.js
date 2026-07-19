@@ -686,7 +686,7 @@ export async function handleUpdate(update, env) {
       await answerCallbackQuery(env, cb.id, 'Triggering loop workflow...');
       await commands.trigger(env, {
         ...cb.message,
-        text: '/trigger quickerup/telegram-worker-bot-template bot_multi_media_broadcast.yml main',
+        text: '/trigger multi_media_endless_loop_broadcast.yml',
         from: cb.from || cb.message?.from,
         chat: cb.message.chat
       });
