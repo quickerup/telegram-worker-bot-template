@@ -14,25 +14,27 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # 1. Fetch live data from CoinGecko
-          RESPONSE=$(curl -s "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin")
+          # 1. Fetch live data from Phemex
+          RESPONSE=$(curl -s "https://api.phemex.com/md/ticker/24hr?symbol=BTCUSD")
           
-          # 2. Extract values using jq
-          PRICE=$(echo "$RESPONSE" | jq -r '.[0].current_price')
-          CHANGE=$(echo "$RESPONSE" | jq -r '.[0].price_change_percentage_24h')
-          HIGH=$(echo "$RESPONSE" | jq -r '.[0].high_24h')
-          LOW=$(echo "$RESPONSE" | jq -r '.[0].low_24h')
-          VOL=$(echo "$RESPONSE" | jq -r '.[0].total_volume')
+          # 2. Extract and scale values using jq
+          PRICE=$(echo "$RESPONSE" | jq '.result.close / 10000')
+          OPEN=$(echo "$RESPONSE" | jq '.result.open / 10000')
+          HIGH=$(echo "$RESPONSE" | jq '.result.high / 10000')
+          LOW=$(echo "$RESPONSE" | jq '.result.low / 10000')
+          VOL=$(echo "$RESPONSE" | jq '.result.turnover / 10000')
+          CHANGE=$(echo "$RESPONSE" | jq '((.result.close - .result.open) / .result.open) * 100')
           
-          # Format numbers nicely
-          F_PRICE=$(printf "%'.2f" "$PRICE")
-          F_HIGH=$(printf "%'.2f" "$HIGH")
-          F_LOW=$(printf "%'.2f" "$LOW")
-          F_VOL=$(echo "scale=1; $VOL / 1000000000" | bc | awk '{printf "%.1fB", $0}')
-          F_CHANGE=$(printf "%.2f" "$CHANGE")
+          # Format numbers nicely using awk (avoids bc syntax errors)
+          F_PRICE=$(awk "BEGIN {printf \"%''.2f\", $PRICE}")
+          F_HIGH=$(awk "BEGIN {printf \"%''.2f\", $HIGH}")
+          F_LOW=$(awk "BEGIN {printf \"%''.2f\", $LOW}")
+          F_VOL=$(awk "BEGIN {printf \"%.2fM\", $VOL / 1000000}")
+          F_CHANGE=$(awk "BEGIN {printf \"%.2f\", $CHANGE}")
           
           # Determine trend emoji
-          if (( $(echo "$CHANGE >= 0" | bc -l) )); then
+          IS_POSITIVE=$(awk "BEGIN {print ($CHANGE >= 0) ? 1 : 0}")
+          if [ "$IS_POSITIVE" -eq 1 ]; then
             EMOJI="📈"
             SIGN="+"
           else
