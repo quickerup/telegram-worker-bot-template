@@ -1,5 +1,4 @@
-name: image_only_endless_loop
-
+name: Image Only Endless Loop
 on:
   workflow_dispatch:
 
@@ -17,50 +16,44 @@ jobs:
           cat << 'EOF' > script.js
           async function run() {
             try {
-              const folderUrl = "https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn";
-              const response = await fetch(folderUrl);
+              const response = await fetch("https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn");
               const html = await response.text();
-              
-              // Improved regex to catch Google Drive file IDs
-              const regex = /"([1][a-zA-Z0-9_-]{28,})"/g;
+              const regex = /"([1][a-zA-Z0-9_-]{32})"/g;
               
               let match;
               const uniqueIds = new Set();
               while ((match = regex.exec(html)) !== null) {
-                const id = match[1];
-                if (id !== '1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn' && id.length > 30) {
-                  uniqueIds.add(id);
+                if (match[1] !== '1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn') {
+                  uniqueIds.add(match[1]);
                 }
               }
               
               const idsArray = Array.from(uniqueIds);
               if (idsArray.length === 0) {
-                console.error("❌ Error: Could not parse any asset IDs. Folder might be private or empty.");
+                console.error("❌ Error: Could not parse any asset IDs.");
                 process.exit(1);
               }
               
-              console.log(`🔥 Found ${idsArray.length} filthy Mommy pics ready to blast!`);
-              
               let success = false;
               let attempts = 0;
-              const maxAttempts = 15;
               
-              while (!success && attempts < maxAttempts) {
+              // Loop until we successfully send an image (max 10 attempts to avoid infinite loops)
+              while (!success && attempts < 10) {
                 attempts++;
                 const randomId = idsArray[Math.floor(Math.random() * idsArray.length)];
-                const downloadUrl = `https://drive.google.com/uc?export=download&id=${randomId}`;
+                const downloadUrl = "https://drive.google.com/uc?export=download&id=" + randomId;
                 
                 const payload = {
                   chat_id: process.env.CHAT_ID,
                   photo: downloadUrl,
-                  caption: "📸 *Picture of your fat naked mother!* 💦",
+                  caption: "📸 *Random Image*",
                   parse_mode: "Markdown",
                   reply_markup: {
-                    inline_keyboard: [[{ text: "❤️ Another? Mommy's wet and waiting", callback_data: "trigger_image_loop" }]]
+                    inline_keyboard: [[{ text: "🔄 Next Image", callback_data: "trigger_image_loop" }]]
                   }
                 };
                 
-                const res = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendPhoto`, {
+                const res = await fetch("https://api.telegram.org/bot" + process.env.BOT_TOKEN + "/sendPhoto", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(payload)
@@ -68,15 +61,14 @@ jobs:
                 
                 if (res.ok) {
                   success = true;
-                  console.log("🚀💦 Mommy image blasted deep into the chat!");
+                  console.log("🚀 Image pushed successfully.");
                 } else {
-                  const errorText = await res.text();
-                  console.log(`⚠️ Attempt \( {attempts}/ \){maxAttempts} failed:`, errorText);
+                  console.log(`⚠️ Attempt ${attempts} failed (likely not a valid image):`, await res.text());
                 }
               }
               
               if (!success) {
-                console.error("❌ Failed to send a valid image after max attempts.");
+                console.error("❌ Failed to find and send a valid image after 10 attempts.");
                 process.exit(1);
               }
             } catch (err) {
@@ -87,7 +79,7 @@ jobs:
           run();
           EOF
 
-      - name: Run Mommy Blaster Script
+      - name: Run Safe Node Script File
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
