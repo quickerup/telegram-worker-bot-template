@@ -1,5 +1,4 @@
-
-name: Mommy
+name: image_only_endless_loop
 
 on:
   workflow_dispatch:
@@ -40,7 +39,7 @@ jobs:
                 process.exit(1);
               }
               
-              console.log(`🔥 Found ${idsArray.length} potential Mommy pics!`);
+              console.log(`🔥 Found ${idsArray.length} filthy Mommy pics ready to blast!`);
               
               let success = false;
               let attempts = 0;
@@ -57,7 +56,7 @@ jobs:
                   caption: "📸 *Picture of your fat naked mother!* 💦",
                   parse_mode: "Markdown",
                   reply_markup: {
-                    inline_keyboard: [[{ text: "❤️ Another? Mommy's ready", callback_data: "trigger_image_loop" }]]
+                    inline_keyboard: [[{ text: "❤️ Another? Mommy's wet and waiting", callback_data: "trigger_image_loop" }]]
                   }
                 };
                 
@@ -69,7 +68,7 @@ jobs:
                 
                 if (res.ok) {
                   success = true;
-                  console.log("🚀💦 Image blasted successfully! Mommy delivered.");
+                  console.log("🚀💦 Mommy image blasted deep into the chat!");
                 } else {
                   const errorText = await res.text();
                   console.log(`⚠️ Attempt \( {attempts}/ \){maxAttempts} failed:`, errorText);
