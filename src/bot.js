@@ -534,7 +534,6 @@ export async function handleUpdate(update, env) {
     if (cb.data && cb.data.startsWith('select_branch:')) {
       await handleBranchSelectionCallback(env, cb);
     } else if (cb.data && cb.data.startsWith('delete_branch:')) {
-      if (!cb.message || cb.message.chat.id !== ALLOWED_CHAT_ID) return;
       await handleBranchDeleteCallback(env, cb);
     } else if (cb.data && cb.data.startsWith('trig:')) {
       const match = cb.data.match(/^trig:([^:]+\/[^:]+):([^:]+)(?::(.+))?$/);
