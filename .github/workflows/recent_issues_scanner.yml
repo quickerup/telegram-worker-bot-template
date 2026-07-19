@@ -1,0 +1,29 @@
+name: Recent Issues Scanner
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 0 * * *
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    - name: Scan recent issues
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPOS: ${{ github.repos }}
+      run: |
+        curl -s -X GET \
+        https://api.github.com/search/issues?q=state:open&sort=updated&order=desc&per_page=20 \
+        -H "Authorization: Bearer $GITHUB_TOKEN" \
+        -H "Accept: application/vnd.github.v3+json" > issues.json
+        jq '.items[] | {repo: .repository_url, title: .title, html_url: .html_url, created_at: .created_at}' issues.json > issues.txt
+    - name: Generate markdown summary
+      run: |
+        echo "# Recent Issues" > RECENT_ISSUES.md
+        while IFS= read -r line; do
+         
