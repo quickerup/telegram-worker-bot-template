@@ -476,7 +476,7 @@ const commands = {
     await sendMessage(
       env,
       msg.chat.id,
-      'Commands:\n/start - greet\n/help - this message\n/actions - list all workflows as buttons\n/trigger [repo] [workflow] [branch] - trigger a GitHub action\n/makeworkflow [repo] [description] - use AI to design and commit a new workflow\n/import [repo] <yaml> - import a premade workflow file\n\nAnything else you send gets echoed back.'
+      'Commands:\n/start - greet\n/help - this message\n/actions - list all workflows as buttons\n/trigger <workflow> [branch] - trigger a GitHub action\n/makeworkflow <description> - use AI to design and commit a new workflow\n/import <yaml> - import a premade workflow file\n\nAnything else you send gets echoed back.'
     );
   },
   actions: async (env, msg) => {
@@ -521,11 +521,11 @@ const commands = {
       return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
     }
     
-    // Parse arguments: /trigger owner/repo workflow.yml branch
+    // Parse arguments: /trigger workflow.yml [branch]
     const parts = msg.text.trim().split(/\s+/);
-    const repo = parts[1] || "quickerup/telegram-worker-bot-template";
-    const workflow = parts[2] || "deploy.yml";
-    const branch = parts[3] || await getSelectedBranch(env, msg.chat.id) || env.GITHUB_REF || "main";
+    const repo = actionsRepo(env);
+    const workflow = parts[1] || "deploy.yml";
+    const branch = parts[2] || await getSelectedBranch(env, msg.chat.id) || env.GITHUB_REF || "main";
 
     await sendMessage(env, msg.chat.id, `Triggering \`${workflow}\` on \`${repo}\` (\`${branch}\`)...`);
     const result = await triggerWorkflow(env, repo, workflow, branch);
@@ -536,12 +536,12 @@ const commands = {
     if (!env.GHPAT) {
       return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
     }
-    const match = msg.text.trim().match(/^\/import\s+([^\s]+)\s+([\s\S]+)$/);
+    const match = msg.text.trim().match(/^\/import\s+([\s\S]+)$/);
     if (!match) {
-      return sendMessage(env, msg.chat.id, "Usage:\n/import [owner/repo]\n<paste yaml here>");
+      return sendMessage(env, msg.chat.id, "Usage:\n/import <paste yaml here>");
     }
-    const repo = match[1];
-    let yaml = match[2].trim();
+    const repo = actionsRepo(env);
+    let yaml = match[1].trim();
     if (yaml.startsWith("```")) {
       yaml = yaml.replace(/^```[a-z]*\n?/, "").replace(/\n```$/, "");
     }
@@ -552,12 +552,13 @@ const commands = {
     if (!env.GHPAT) {
       console.warn("GHPAT not set, aborting.");
       return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
-    } const parts = msg.text.trim().split(/\s+/);
-    if (parts.length < 3) {
-      return sendMessage(env, msg.chat.id, "Usage: /makeworkflow [owner/repo] [description of the workflow]");
+    } 
+    const parts = msg.text.trim().split(/\s+/);
+    if (parts.length < 2) {
+      return sendMessage(env, msg.chat.id, "Usage: /makeworkflow [description of the workflow]");
     }
-    const repo = parts[1];
-    const prompt = parts.slice(2).join(" ");
+    const repo = actionsRepo(env);
+    const prompt = parts.slice(1).join(" ");
 
     await sendMessage(env, msg.chat.id, `🤖 Asking AI to design workflow for \`${repo}\`...`);
 

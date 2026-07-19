@@ -82,3 +82,17 @@ jobs:
                 {"command": "import",       "description": "Import a premade YAML workflow"}
               ]
             }'
+
+      - name: Update Bot Description (What can this bot do?)
+        run: |
+          curl -sS -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setMyDescription" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "description": "🤖 **Serverless GitHub Actions Agent**\n\nI am a secure, isolated Cloudflare Worker that bridges Telegram directly to your GitHub repository.\n\n🔒 **Security First:**\n- No servers to hack (100% ephemeral isolated V8 execution)\n- Requests are strictly gated to a hardcoded Chat ID allowance\n- Telegram Webhook payloads are verified cryptographically\n- GitHub Secrets are injected dynamically using libsodium sealed boxes (`tweetsodium`), never logged in plaintext\n\nI can write, commit, and trigger GitHub Actions workflows entirely on-demand right from this chat."
+            }'
+          
+          curl -sS -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setMyShortDescription" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "short_description": "Serverless Telegram Bot that writes, commits, and triggers GitHub Actions securely."
+            }'
