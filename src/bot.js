@@ -79,14 +79,69 @@ async function githubRequest(env, path, options = {}) {
   });
 }
 
-async function triggerWorkflow(env, repo, workflow, branch) {
-  const res = await githubRequest(env, `/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+function workflowSegment(workflow) {
+  return encodeURIComponent(workflow);
+}
+
+async function resolveWorkflowId(env, repo, workflow) {
+  const trimmedWorkflow = workflow.trim();
+  const directRes = await githubRequest(env, `/repos/${repo}/actions/workflows/${workflowSegment(trimmedWorkflow)}`);
+
+  if (directRes.ok) {
+    const directWorkflow = await directRes.json();
+    return { ok: true, workflowId: directWorkflow.id, workflow: directWorkflow };
+  }
+
+  if (directRes.status !== 404) {
+    return { ok: false, status: directRes.status, message: await directRes.text() };
+  }
+
+  const workflowsRes = await githubRequest(env, `/repos/${repo}/actions/workflows`);
+  if (!workflowsRes.ok) {
+    return { ok: false, status: workflowsRes.status, message: await workflowsRes.text() };
+  }
+
+  const { workflows = [] } = await workflowsRes.json();
+  const normalizedWorkflow = trimmedWorkflow.replace(/^\.github\/workflows\//, '');
+  const match = workflows.find((candidate) => {
+    const path = candidate.path || '';
+    const fileName = path.split('/').pop();
+    return (
+      candidate.name === trimmedWorkflow ||
+      path === trimmedWorkflow ||
+      fileName === normalizedWorkflow ||
+      path === `.github/workflows/${normalizedWorkflow}`
+    );
+  });
+
+  if (!match) {
+    return {
+      ok: false,
+      status: 404,
+      message: `Workflow \`${trimmedWorkflow}\` was not found in \`${repo}\`. Use the workflow file name, path, numeric ID, or display name.`
+    };
+  }
+
+  return { ok: true, workflowId: match.id, workflow: match };
+}
+
+async function dispatchWorkflow(env, repo, workflowId, branch) {
+  return githubRequest(env, `/repos/${repo}/actions/workflows/${workflowSegment(String(workflowId))}/dispatches`, {
     method: 'POST',
     body: JSON.stringify({ ref: branch })
   });
+}
+
+async function triggerWorkflow(env, repo, workflow, branch) {
+  const resolved = await resolveWorkflowId(env, repo, workflow);
+  if (!resolved.ok) {
+    return { ok: false, message: `❌ Failed to find workflow (HTTP ${resolved.status}):\n${resolved.message}` };
+  }
+
+  const res = await dispatchWorkflow(env, repo, resolved.workflowId, branch);
 
   if (res.ok) {
-    return { ok: true, message: '✅ Successfully triggered workflow!' };
+    return { ok: true, message: `✅ Successfully triggered workflow \`${resolved.workflow.name || workflow}\`!` };
   }
 
   if (res.status === 422) {
@@ -94,7 +149,7 @@ async function triggerWorkflow(env, repo, workflow, branch) {
     if (body.message && body.message.includes('workflow_dispatch')) {
       return {
         ok: false,
-        message: `⚠️ Cannot trigger \`${workflow}\` manually — it doesn't have a \`workflow_dispatch\` trigger.\n\nIt will run automatically based on its own trigger (e.g. \`workflow_run\`, \`push\`, etc).`
+        message: `⚠️ Cannot trigger \`${resolved.workflow.name || workflow}\` manually — it doesn't have a \`workflow_dispatch\` trigger.\n\nIt will run automatically based on its own trigger (e.g. \`workflow_run\`, \`push\`, etc).`
       };
     }
     return { ok: false, message: `❌ Failed to trigger (HTTP 422):\n${body.message || JSON.stringify(body)}` };
