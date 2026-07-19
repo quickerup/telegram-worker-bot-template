@@ -3,7 +3,7 @@ name: Live Bitcoin Tracker
 on:
   workflow_dispatch: # Allows manual trigger from your /actions menu
   schedule:
-    - cron: '0 13 * * *' # Automatically runs every day at 9:00 AM EST (13:00 UTC)
+    - cron: '*/30 * * * *' # Automatically runs every 30 minutes
 
 jobs:
   fetch_btc:
