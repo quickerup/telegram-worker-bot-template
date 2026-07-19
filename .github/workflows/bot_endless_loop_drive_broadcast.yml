@@ -29,8 +29,7 @@ jobs:
           }
 
           async function fetchDriveMedia(id) {
-            const urls = [
-              `https://drive.google.com/thumbnail?id=${id}&sz=w1600`,
+            const urls = [              `https://drive.google.com/thumbnail?id=${id}&sz=w1600`,
               `https://drive.google.com/uc?export=download&id=${id}`
             ];
 
