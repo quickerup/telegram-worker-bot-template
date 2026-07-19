@@ -1,0 +1,52 @@
+name: Live Bitcoin Tracker
+
+on:
+  workflow_dispatch: # Allows manual trigger from your /actions menu
+  schedule:
+    - cron: '0 13 * * *' # Automatically runs every day at 9:00 AM EST (13:00 UTC)
+
+jobs:
+  fetch_btc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and Post BTC Data
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # 1. Fetch live data from CoinGecko
+          RESPONSE=$(curl -s "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin")
+          
+          # 2. Extract values using jq
+          PRICE=$(echo $RESPONSE | jq -r '.[0].current_price')
+          CHANGE=$(echo $RESPONSE | jq -r '.[0].price_change_percentage_24h')
+          HIGH=$(echo $RESPONSE | jq -r '.[0].high_24h')
+          LOW=$(echo $RESPONSE | jq -r '.[0].low_24h')
+          VOL=$(echo $RESPONSE | jq -r '.[0].total_volume')
+          
+          # Format numbers nicely
+          F_PRICE=$(printf "%'.2f" $PRICE)
+          F_HIGH=$(printf "%'.2f" $HIGH)
+          F_LOW=$(printf "%'.2f" $LOW)
+          F_VOL=$(echo "scale=1; $VOL / 1000000000" | bc | awk '{printf "%.1fB", $0}')
+          F_CHANGE=$(printf "%.2f" $CHANGE)
+          
+          # Determine trend emoji
+          if (( $(echo "$CHANGE >= 0" | bc -l) )); then
+            EMOJI="📈"
+            SIGN="+"
+          else
+            EMOJI="📉"
+            SIGN=""
+          fi
+
+          # 3. Build the raw message text
+          MESSAGE="🪙 *𝗕𝗜𝗧𝗖𝗢𝗜𝗡 (𝗕𝗧𝗖) 𝗠𝗔𝗥𝗞𝗘𝗧 𝗥𝗘𝗣𝗢𝗥𝗧*\n────────────────────\n💰 *Price:*        \$$F_PRICE USD\n$EMOJI *24h Change:*   $SIGN$F_CHANGE%\n🔥 *24h High:*     \$$F_HIGH\n🧊 *24h Low:*      \$$F_LOW\n📊 *24h Volume:*   \$$F_VOL\n────────────────────\n🕒 _Updated via GitHub Actions_"
+
+          # 4. Strictly escape characters for Telegram's MarkdownV2 (. , - _ ( ) +)
+          ESC_MESSAGE=$(echo -e "$MESSAGE" | sed -r 's/([\.\,\-\_\(\)\+])/\\\1/g')
+
+          # 5. Send it to your Telegram Bot
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"$ESC_MESSAGE\", \"parse_mode\": \"MarkdownV2\"}"
