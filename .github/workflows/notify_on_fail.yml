@@ -50,6 +50,7 @@ jobs:
           ISSUE_BODY
 
           gh issue create \
+            --repo "$REPO" \
             --title "🚨 Action failure: ${WORKFLOW_NAME} run #${RUN_NUMBER}" \
             --body-file issue-body.md \
             --label "automatic issue report"

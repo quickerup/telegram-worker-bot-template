@@ -1,0 +1,44 @@
+name: Action Outcomes Logger
+
+on:
+  workflow_run:
+    workflows: ["*"]
+    types:
+      - completed
+
+jobs:
+  log-to-sheets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Outcome to Google Sheets
+        env:
+          WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "⚠️ GOOGLE_SHEETS_WEBHOOK secret is not set. Skipping."
+            exit 0
+          fi
+          
+          # Construct JSON payload
+          PAYLOAD=$(jq -n \
+            --arg workflow "${{ github.event.workflow_run.name }}" \
+            --arg status "${{ github.event.workflow_run.conclusion }}" \
+            --arg branch "${{ github.event.workflow_run.head_branch }}" \
+            --arg actor "${{ github.actor }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg run_id "${{ github.event.workflow_run.id }}" \
+            '{
+              workflow: $workflow,
+              status: $status,
+              branch: $branch,
+              actor: $actor,
+              repo: $repo,
+              run_id: $run_id,
+              timestamp: (now | todateiso8601)
+            }'
+          )
+          
+          # Send to Google Sheets Apps Script Webhook
+          curl -s -L -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
