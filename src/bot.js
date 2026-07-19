@@ -47,6 +47,30 @@ async function githubRequest(env, path, options = {}) {
   });
 }
 
+async function triggerWorkflow(env, repo, workflow, branch) {
+  const res = await githubRequest(env, `/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: branch })
+  });
+
+  if (res.ok) {
+    return { ok: true, message: '✅ Successfully triggered workflow!' };
+  }
+
+  if (res.status === 422) {
+    const body = await res.json().catch(() => ({}));
+    if (body.message && body.message.includes('workflow_dispatch')) {
+      return {
+        ok: false,
+        message: `⚠️ Cannot trigger \`${workflow}\` manually — it doesn't have a \`workflow_dispatch\` trigger.\n\nIt will run automatically based on its own trigger (e.g. \`workflow_run\`, \`push\`, etc).`
+      };
+    }
+    return { ok: false, message: `❌ Failed to trigger (HTTP 422):\n${body.message || JSON.stringify(body)}` };
+  }
+
+  return { ok: false, message: `❌ Failed to trigger (HTTP ${res.status}):\n${await res.text()}` };
+}
+
 async function handleWorkflowCallback(env, cb) {
   if (!env.GHPAT) {
     await answerCallbackQuery(env, cb.id, 'GHPAT is not set');
@@ -283,32 +307,8 @@ const commands = {
     const branch = parts[3] || "main";
 
     await sendMessage(env, msg.chat.id, `Triggering \`${workflow}\` on \`${repo}\` (\`${branch}\`)...`);
-
-    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `Bearer ${env.GHPAT}`,
-        'User-Agent': 'Cloudflare-Worker-Telegram-Bot',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ ref: branch })
-    });
-
-    if (res.ok) {
-      await sendMessage(env, msg.chat.id, `✅ Successfully triggered workflow!`);
-    } else if (res.status === 422) {
-      const body = await res.json().catch(() => ({}));
-      if (body.message && body.message.includes('workflow_dispatch')) {
-        await sendMessage(env, msg.chat.id,
-          `⚠️ Cannot trigger \`${workflow}\` manually — it doesn't have a \`workflow_dispatch\` trigger.\n\nIt will run automatically based on its own trigger (e.g. \`workflow_run\`, \`push\`, etc).`);
-      } else {
-        await sendMessage(env, msg.chat.id, `❌ Failed to trigger (HTTP 422):\n${body.message || JSON.stringify(body)}`);
-      }
-    } else {
-      const errorText = await res.text();
-      await sendMessage(env, msg.chat.id, `❌ Failed to trigger (HTTP ${res.status}):\n${errorText}`);
-    }
+    const result = await triggerWorkflow(env, repo, workflow, branch);
+    await sendMessage(env, msg.chat.id, result.message);
   },
   import: async (env, msg) => {
     console.log(`[Command] /import from user ${msg.from.id}`);
@@ -433,16 +433,17 @@ export async function handleUpdate(update, env) {
     
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
     if (cb.data && cb.data.startsWith('trig:')) {
-      const match = cb.data.match(/^trig:([^:]+\/[^:]+):(.+)$/);
-      if (!match) return;
-      const [, repo, workflow] = match;
-      const fakeMsg = {
-        chat: cb.message.chat,
-        from: cb.from,
-        text: `/trigger ${repo} ${workflow} main`
-      };
-      await commands.trigger(env, fakeMsg);
+      const match = cb.data.match(/^trig:([^:]+\/[^:]+):([^:]+)(?::(.+))?$/);
+      if (!match) {
+        await answerCallbackQuery(env, cb.id, 'Invalid trigger action');
+        return;
+      }
+      const [, repo, workflow, callbackBranch] = match;
+      const branch = callbackBranch || env.GITHUB_REF || 'main';
       await answerCallbackQuery(env, cb.id, 'Triggering workflow...');
+      await sendMessage(env, cb.message.chat.id, `Triggering \`${workflow}\` on \`${repo}\` (\`${branch}\`)...`);
+      const result = await triggerWorkflow(env, repo, workflow, branch);
+      await sendMessage(env, cb.message.chat.id, result.message);
     } else if (cb.data && /^(wr|wd|wc|wD):/.test(cb.data)) {
       await handleWorkflowCallback(env, cb);
     }
