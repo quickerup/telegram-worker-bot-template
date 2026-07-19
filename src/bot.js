@@ -563,6 +563,14 @@ export async function handleUpdate(update, env) {
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
     if (cb.data === 'next_drive_pic') {
       await handleNextDrivePicCallback(env, cb);
+    } else if (cb.data === 'trigger_loop') {
+      await answerCallbackQuery(env, cb.id, 'Triggering loop workflow...');
+      await commands.trigger(env, {
+        ...cb.message,
+        text: '/trigger quickerup/telegram-worker-bot-template bot_endless_loop_drive_broadcast.yml main',
+        from: cb.from || cb.message?.from,
+        chat: cb.message.chat
+      });
     } else if (cb.data && cb.data.startsWith('select_branch:')) {
       await handleBranchSelectionCallback(env, cb);
     } else if (cb.data && cb.data.startsWith('delete_branch:')) {
