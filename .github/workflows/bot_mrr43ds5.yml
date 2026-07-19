@@ -1,0 +1,53 @@
+name: Repository Branch Janitor
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  cleanup-menu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Deletion Interface
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # 1. Fetch all remote branches, filtering out HEAD and main completely for safety
+          BRANCH_LIST=$(git branch -r | grep -v -E 'HEAD|main' | sed 's|[[:space:]]*origin/||g')
+          
+          if [ -z "$BRANCH_LIST" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${CHAT_ID}" \
+              -d "text=✨ *Your repository is completely clean!* No sandbox or feature branches found to delete." \
+              -d "parse_mode=Markdown"
+            exit 0
+          fi
+
+          # 2. Build the destructive inline keyboard array
+          KEYBOARD_JSON="{\"inline_keyboard\": ["
+          FIRST=true
+          
+          for BRANCH in $BRANCH_LIST; do
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              KEYBOARD_JSON="${KEYBOARD_JSON}, "
+            fi
+            # Notice the distinct payload prefix: delete_branch:
+            KEYBOARD_JSON="${KEYBOARD_JSON}[{\"text\": \"🗑️ Delete: $BRANCH\", \"callback_data\": \"delete_branch:$BRANCH\"}]"
+          done
+          
+          KEYBOARD_JSON="${KEYBOARD_JSON}]}"
+          
+          MSG="🔥 *Repository Branch Janitor* %0A%0ASelect a temporary branch below to permanently purge it from the remote origin:"
+          
+          # 3. Fire the kill-list to Telegram
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=${MSG}" \
+            -d "parse_mode=Markdown" \
+            --data-urlencode "reply_markup=${KEYBOARD_JSON}"
