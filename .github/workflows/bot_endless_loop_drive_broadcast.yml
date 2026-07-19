@@ -14,51 +14,137 @@ jobs:
       - name: Create Separate Node Script File
         run: |
           cat << 'EOF' > script.js
+          const FOLDER_URL = "https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn";
+
+          function shuffle(items) {
+            return items
+              .map((value) => ({ value, sort: Math.random() }))
+              .sort((a, b) => a.sort - b.sort)
+              .map(({ value }) => value);
+          }
+
+          function detectMediaType(bytes, headerContentType) {
+            const headerType = (headerContentType || "").split(";")[0].trim().toLowerCase();
+            const data = new Uint8Array(bytes.slice(0, 32));
+            const ascii = String.fromCharCode(...data);
+
+            if (headerType.startsWith("image/") || headerType.startsWith("video/")) {
+              return headerType;
+            }
+            if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return "image/jpeg";
+            if (data[0] === 0x89 && ascii.slice(1, 4) === "PNG") return "image/png";
+            if (ascii.startsWith("GIF87a") || ascii.startsWith("GIF89a")) return "image/gif";
+            if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "image/webp";
+            if (ascii.slice(4, 8) === "ftyp") return "video/mp4";
+            return "";
+          }
+
+          function filenameFor(mediaKind, contentType, id) {
+            const extensions = {
+              "image/jpeg": "jpg",
+              "image/png": "png",
+              "image/gif": "gif",
+              "image/webp": "webp",
+              "video/mp4": "mp4",
+              "video/quicktime": "mov"
+            };
+            return `${mediaKind}-${id}.${extensions[contentType] || (mediaKind === "video" ? "mp4" : "jpg")}`;
+          }
+
+          async function fetchDriveMedia(id) {
+            const urls = [
+              `https://drive.google.com/uc?export=download&id=${id}`,
+              `https://drive.google.com/thumbnail?id=${id}&sz=w1600`
+            ];
+
+            for (const url of urls) {
+              const response = await fetch(url, { redirect: "follow" });
+              if (!response.ok) {
+                console.warn(`Skipping ${id}: HTTP ${response.status}`);
+                continue;
+              }
+
+              const bytes = await response.arrayBuffer();
+              if (!bytes.byteLength) {
+                console.warn(`Skipping ${id}: empty media response`);
+                continue;
+              }
+
+              const contentType = detectMediaType(bytes, response.headers.get("content-type"));
+              const mediaKind = contentType.startsWith("video/") ? "video" : contentType.startsWith("image/") ? "photo" : "";
+              if (!mediaKind) {
+                console.warn(`Skipping ${id}: response was not a photo or video`);
+                continue;
+              }
+
+              return { bytes, contentType, mediaKind, url };
+            }
+
+            return null;
+          }
+
+          async function sendTelegramMedia(id, media) {
+            const endpoint = media.mediaKind === "video" ? "sendVideo" : "sendPhoto";
+            const fieldName = media.mediaKind === "video" ? "video" : "photo";
+            const form = new FormData();
+
+            form.append("chat_id", process.env.CHAT_ID);
+            form.append(fieldName, new Blob([media.bytes], { type: media.contentType }), filenameFor(media.mediaKind, media.contentType, id));
+            form.append("caption", "🎲 *Random Media Pulled From Your Drive Folder*");
+            form.append("parse_mode", "Markdown");
+            if (media.mediaKind === "video") {
+              form.append("supports_streaming", "true");
+            }
+            form.append("reply_markup", JSON.stringify({
+              inline_keyboard: [
+                [
+                  { text: "🔗 View Target Source", url: media.url },
+                  { text: "🔄 Next Random Media", callback_data: "trigger_loop" }
+                ]
+              ]
+            }));
+
+            return fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/${endpoint}`, {
+              method: "POST",
+              body: form
+            });
+          }
+
           async function run() {
             try {
-              const response = await fetch("https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn");
+              const response = await fetch(FOLDER_URL);
               const html = await response.text();
-
-              const regex = /[a-zA-Z0-9_-]{33}/g;
-              const matches = html.match(regex);
+              const matches = html.match(/[a-zA-Z0-9_-]{25,}/g);
 
               if (!matches || matches.length === 0) {
                 console.error("❌ Error: Could not parse any asset IDs from the folder view.");
                 process.exit(1);
               }
 
-              const uniqueIds = [...new Set(matches)];
-              const randomId = uniqueIds[Math.floor(Math.random() * uniqueIds.length)];
-              const imageUrl = "https://drive.google.com/uc?export=download&id=" + randomId;
+              const candidateIds = shuffle([...new Set(matches)]);
+              console.log(`Found ${candidateIds.length} candidate Drive asset IDs.`);
 
-              const payload = {
-                chat_id: process.env.CHAT_ID,
-                photo: imageUrl,
-                caption: "🎲 *Random Image Pulled From Your Drive Folder*",
-                parse_mode: "Markdown",
-                reply_markup: {
-                  inline_keyboard: [
-                    [
-                      { text: "🔗 View Target Source", url: "https://github.com/quickerup" },
-                      { text: "🔄 Next Random Image", callback_data: "trigger_loop" }
-                    ]
-                  ]
+              for (const id of candidateIds) {
+                console.log(`Selected multi-media asset pointer ID: ${id}`);
+                const media = await fetchDriveMedia(id);
+                if (!media) {
+                  continue;
                 }
-              };
 
-              const res = await fetch("https://api.telegram.org/bot" + process.env.BOT_TOKEN + "/sendPhoto", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-              });
+                console.log(`Sending ${media.mediaKind} via Telegram ${media.mediaKind === "video" ? "sendVideo" : "sendPhoto"}.`);
+                const res = await sendTelegramMedia(id, media);
+                if (!res.ok) {
+                  const errText = await res.text();
+                  console.error("❌ Telegram API transaction rejected:", errText);
+                  continue;
+                }
 
-              if (!res.ok) {
-                const errText = await res.text();
-                console.error("❌ Telegram API transaction rejected:", errText);
-                process.exit(1);
+                console.log("🚀 Photo/video successfully pushed to chat frame UI.");
+                return;
               }
 
-              console.log("🚀 Payload successfully pushed to chat frame UI.");
+              console.error("❌ Error: None of the parsed Drive asset IDs resolved to photo/video content.");
+              process.exit(1);
             } catch (err) {
               console.error("❌ Fatal loop engine execution fault:", err);
               process.exit(1);
