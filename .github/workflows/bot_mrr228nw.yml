@@ -1,0 +1,31 @@
+name: n8n HTTP Request Node
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to test'
+        required: true
+        default: 'https://api.telegram.org'
+jobs:
+  http-node:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Endpoint Statistics
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_URL: ${{ github.event.inputs.url }}
+        run: |
+          echo "Testing target: $TARGET_URL"
+          
+          # Run curl to capture HTTP status code and total response time
+          RESPONSE_INFO=$(curl -s -o /dev/null -w "Status: %{http_code}\nTime: %{time_total}s" "$TARGET_URL")
+          
+          # Format the output message
+          MESSAGE="⚡️ *n8n HTTP Node Executed* %0A%0A*Target:* $TARGET_URL%0A$RESPONSE_INFO"
+          
+          # Send results back to your Telegram
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=${MESSAGE}" \
+            -d "parse_mode=Markdown"
