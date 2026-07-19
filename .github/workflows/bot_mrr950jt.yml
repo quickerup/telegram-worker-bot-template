@@ -1,0 +1,28 @@
+name: Photo Broadcast Node
+on:
+  workflow_dispatch:
+    inputs:
+      photo_url:
+        default: 'https://images.unsplash.com/photo-1621761191319-c6fb62004040'
+      caption:
+        default: '🚀 *Look Mom, No Hands! Sent via /import*'
+      button_text:
+        default: '🦖 Visit HD Jumping Dino'
+      button_url:
+        default: 'https://github.com/quickerup'
+jobs:
+  broadcast-media:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Media Payload
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PHOTO: ${{ github.event.inputs.photo_url }}
+          CAPTION: ${{ github.event.inputs.caption }}
+          B_TEXT: ${{ github.event.inputs.button_text }}
+          B_URL: ${{ github.event.inputs.button_url }}
+        run: |
+          KEYBOARD=$(jq -n --arg txt "$B_TEXT" --arg url "$B_URL" '[[{"text": $txt, "url": $url}]]')
+          PAYLOAD=$(jq -n --arg chat "$CHAT_ID" --arg photo "$PHOTO" --arg caption "$CAPTION" --argjson kb "$KEYBOARD" '{chat_id: $chat, photo: $photo, caption: $caption, parse_mode: "Markdown", reply_markup: { inline_keyboard: $kb }}')
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto" -H "Content-Type: application/json" -d "$PAYLOAD"
