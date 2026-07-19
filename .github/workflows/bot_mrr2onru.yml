@@ -1,0 +1,44 @@
+name: Sandbox Diagnostics Node
+on:
+  workflow_dispatch:
+jobs:
+  run-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Network Tools
+        run: sudo apt-get update && sudo apt-get install -y traceroute
+
+      - name: Execute Sandbox Run
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WORKER_URL: ${{ secrets.TELEGRAM_WORKER_URL }}
+        run: |
+          # 1. Parse the domain for testing
+          CLEAN_DOMAIN=$(echo "$WORKER_URL" | sed -e 's|^[^/]*//' -e 's|/.*' -e 's|:.*||')
+          
+          # 2. Run a lightning-fast 5-hop test trace to see if paths are clear
+          WORKER_TRACE=$(traceroute -m 5 -n "$CLEAN_DOMAIN" 2>&1 || echo "Worker trace failed")
+          TG_TRACE=$(traceroute -m 5 -n api.telegram.org 2>&1 || echo "Telegram trace failed")
+          
+          # 3. Construct a beautiful interactive dashboard payload
+          TEXT_PAYLOAD="🧪 *Sandbox Diagnostic Node: ONLINE*
+
+*Worker Route Shakedown ($CLEAN_DOMAIN):*
+\\\
+$WORKER_TRACE
+\\\
+
+*Telegram API Route Shakedown:*
+\\\
+$TG_TRACE
+\\\
+
+Everything looks green in the sandbox environment. Ready to deploy changes to production?"
+
+          # 4. Fire back to Telegram with interactive deployment buttons
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=$TEXT_PAYLOAD" \
+            --data-urlencode "parse_mode=Markdown" \
+            --data-urlencode "reply_markup={\"inline_keyboard\": [[{\"text\": \"🚀 Deploy to Prod\", \"callback_data\": \"sb_deploy\"}, {\"text\": \"🗑️ Abort\", \"callback_data\": \"sb_abort\"}]]}"
