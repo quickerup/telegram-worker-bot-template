@@ -1,4 +1,4 @@
-name: Image Only Endless Loop
+name: Mommy
 on:
   workflow_dispatch:
 
@@ -46,10 +46,10 @@ jobs:
                 const payload = {
                   chat_id: process.env.CHAT_ID,
                   photo: downloadUrl,
-                  caption: "📸 *Random Image*",
+                  caption: "📸 *Picture of your fat naked mother!*",
                   parse_mode: "Markdown",
                   reply_markup: {
-                    inline_keyboard: [[{ text: "🔄 Next Image", callback_data: "trigger_image_loop" }]]
+                    inline_keyboard: [[{ text: "❤️ Another?", callback_data: "trigger_image_loop" }]]
                   }
                 };
                 
