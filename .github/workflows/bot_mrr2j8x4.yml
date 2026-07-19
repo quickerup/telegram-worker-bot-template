@@ -1,0 +1,35 @@
+name: Workflow Sandbox Tester
+on:
+  workflow_dispatch:
+    inputs:
+      test_payload:
+        description: 'Mock data to validate'
+        required: true
+        default: '{"status": "sandbox_test"}'
+  push:
+    branches:
+      - main
+jobs:
+  run-sandbox:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Validate Logic
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PAYLOAD: ${{ github.event.inputs.test_payload }}
+        run: |
+          # Check JSON syntax
+          if echo "$PAYLOAD" | jq . >/dev/null 2>&1; then
+            OUT=" VALID JSON"
+          else
+            OUT=" INVALID JSON"
+          fi
+          MSG=" *Sandbox Node* 
+*Status:* $OUT
+*Data:* $PAYLOAD"
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "chat_id=${CHAT_ID}&text=${MSG}&parse_mode=Markdown
