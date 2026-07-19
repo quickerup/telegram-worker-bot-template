@@ -1,0 +1,52 @@
+name: Bitcoin Price Tracker
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  fetch-price:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull Market Data & Format Message
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # 1. Fetch live data from CoinGecko
+          RESPONSE=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true")
+          
+          # 2. Parse the pricing and 24h metrics using jq
+          PRICE=$(echo "$RESPONSE" | jq -r '.bitcoin.usd')
+          CHANGE=$(echo "$RESPONSE" | jq -r '.bitcoin.usd_24h_change')
+          
+          # 3. Format the numbers for a clean UI
+          FORMATTED_PRICE=$(printf "%'d" "${PRICE%.*}")
+          
+          # 4. Add a dynamic visual indicator based on market movement
+          if (( $(echo "$CHANGE > 0" | bc -l) )); then
+            TREND="📈 Up"
+            ARROW="🟢"
+            CHANGE_PREFIX="+"
+          else
+            TREND="📉 Down"
+            ARROW="🔴"
+            CHANGE_PREFIX=""
+          fi
+          
+          FORMATTED_CHANGE=$(printf "%.2f" "$CHANGE")
+          
+          # 5. Build a sleek, professional markdown card
+          MSG="🪙 *Bitcoin Market Node* %0A%0A"
+          MSG="${MSG}*Price:* \$$FORMATTED_PRICE USD %0A"
+          MSG="${MSG}*24h Trend:* $TREND %0A"
+          MSG="${MSG}*24h Change:* ${ARROW} ${CHANGE_PREFIX}${FORMATTED_CHANGE}% %0A%0A"
+          MSG="${MSG}_Data fetched via CoinGecko API_"
+          
+          # 6. Add an interactive button to trigger a manual refresh on demand
+          KEYBOARD_JSON="{\"inline_keyboard\": [[{\"text\": \"🔄 Refresh Ticker\", \"callback_data\": \"refresh_btc\"}]]}"
+          
+          # 7. Ship to Telegram
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=${MSG}" \
+            -d "parse_mode=Markdown" \
+            --data-urlencode "reply_markup=${KEYBOARD_JSON}"
