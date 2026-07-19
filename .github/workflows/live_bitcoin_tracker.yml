@@ -50,9 +50,11 @@ jobs:
           RAW_MSG="${RAW_MSG}${F_VOL}\n────────────────────\n🕒 _Updated via GitHub Actions_"
 
           # 4. Strictly escape characters for Telegram's MarkdownV2 (. , - _ ( ) +)
-          ESC_MESSAGE=$(echo -e "$RAW_MSG" | sed -r 's/([\.\,\-\_\(\)\+])/\\\1/g')
+          ESC_MESSAGE=$(echo -e "$RAW_MSG" | sed -r 's/([.,_()+-])/\\\1/g')
 
-          # 5. Send it to your Telegram Bot
+          # 5. Send it to your Telegram Bot safely using jq to construct the JSON payload
+          PAYLOAD=$(jq -n --arg chat_id "$TELEGRAM_CHAT_ID" --arg text "$ESC_MESSAGE" '{"chat_id": $chat_id, "text": $text, "parse_mode": "MarkdownV2"}')
+          
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -H "Content-Type: application/json" \
-            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"$ESC_MESSAGE\", \"parse_mode\": \"MarkdownV2\"}"
+            -d "$PAYLOAD"
