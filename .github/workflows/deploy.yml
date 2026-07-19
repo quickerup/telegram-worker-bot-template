@@ -67,3 +67,18 @@ jobs:
             -d "url=${{ vars.WORKER_URL }}" \
             -d "secret_token=${{ secrets.TELEGRAM_WEBHOOK_SECRET }}" \
             -d "drop_pending_updates=true"
+
+      - name: Register bot commands menu
+        run: |
+          curl -sS -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setMyCommands" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "commands": [
+                {"command": "start",        "description": "Greet the bot"},
+                {"command": "help",         "description": "Show all commands"},
+                {"command": "actions",      "description": "List workflows as buttons"},
+                {"command": "trigger",      "description": "Trigger a GitHub workflow"},
+                {"command": "makeworkflow", "description": "AI-generate and commit a workflow"},
+                {"command": "import",       "description": "Import a premade YAML workflow"}
+              ]
+            }'
