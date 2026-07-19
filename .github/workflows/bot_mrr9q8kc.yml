@@ -1,0 +1,69 @@
+name: Web Image Finder Matrix
+on:
+  workflow_dispatch:
+    inputs:
+      search_query:
+        description: 'The search terms for the image you want to find'
+        required: true
+        default: 'cyberpunk pixel art dinosaur'
+      button_text:
+        description: 'Button Label'
+        required: false
+        default: '🔗 View Target Source'
+      button_url:
+        description: 'Button Target URL'
+        required: false
+        default: 'https://github.com/quickerup'
+
+jobs:
+  search-and-blast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Web Matrix and Broadcast Image
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          QUERY: ${{ github.event.inputs.search_query }}
+          B_TEXT: ${{ github.event.inputs.button_text }}
+          B_URL: ${{ github.event.inputs.button_url }}
+        run: |
+          echo "Initiating search array for query: ${QUERY}..."
+          
+          # 1. Convert spaces to plus signs to format a clean URL parameter string
+          URL_ENCODED_QUERY=$(echo "${QUERY}" | tr ' ' '+')
+          
+          # 2. Query DuckDuckGo's vqd token endpoint first (required by their API backend)
+          VQD_TOKEN=$(curl -sL "https://duckduckgo.com/?q=${URL_ENCODED_QUERY}" | grep -oE "vqd='[0-9-]+'" | head -n 1 | tr -d "vqd='")
+          
+          if [ -z "$VQD_TOKEN" ]; then
+            # Alternate extraction method if first regex pattern shifts
+            VQD_TOKEN=$(curl -sL "https://duckduckgo.com/?q=${URL_ENCODED_QUERY}" | grep -oE 'vqd="[0-9-]+"' | head -n 1 | tr -d 'vqd="')
+          fi
+          
+          # 3. Pull the live JSON payload containing real-time image results
+          SEARCH_JSON=$(curl -sL -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://duckduckgo.com/i.js?l=us-en&o=json&q=${URL_ENCODED_QUERY}&vqd=${VQD_TOKEN}&f=,,,")
+          
+          # 4. Extract the top valid absolute image URL result using jq
+          IMAGE_TARGET_URL=$(echo "$SEARCH_JSON" | jq -r '.results[0].image' 2>/dev/null)
+          
+          if [ -z "$IMAGE_TARGET_URL" ] || [ "$IMAGE_TARGET_URL" == "null" ]; then
+            echo "❌ Error: Matrix was unable to resolve a direct image URL asset for this query."
+            exit 1
+          fi
+          
+          echo "Resolved target image pointer: $IMAGE_TARGET_URL"
+          CAPTION_TEXT="🔍 *Image Matrix Found Asset For:* \"${QUERY}\""
+          
+          # 5. Compile the Telegram layout configuration block
+          KEYBOARD=$(jq -n --arg txt "$B_TEXT" --arg url "$B_URL" '[[{"text": $txt, "url": $url}]]')
+          PAYLOAD=$(jq -n \
+            --arg chat "$CHAT_ID" \
+            --arg photo "$IMAGE_TARGET_URL" \
+            --arg caption "$CAPTION_TEXT" \
+            --argjson kb "$KEYBOARD" \
+            '{chat_id: $chat, photo: $photo, caption: $caption, parse_mode: "Markdown", reply_markup: { inline_keyboard: $kb }}')
+          
+          # 6. Ship the final asset straight to the chat UI
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
