@@ -1,0 +1,38 @@
+name: Create Sandbox Branch
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  branch-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and Push Sandbox Branch
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Configure a generic git identity
+          git config --global user.name "sandbox-bot"
+          git config --global user.email "sandbox@bot.internal"
+          
+          # Create a unique branch name
+          BRANCH_NAME="sandbox-run-${{ github.run_id }}"
+          
+          # Cut the new branch from main and push it upstream
+          git checkout -b "$BRANCH_NAME"
+          git push origin "$BRANCH_NAME"
+          
+          # Construct message with an explicit URL to see the new isolated sandbox
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}/tree/$BRANCH_NAME"
+          MSG="🌿 *New Sandbox Branch Created!* %0A%0AIsolated branch \$BRANCH_NAME\ is live. You can test your modifications here without affecting production."
+          
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=${MSG}" \
+            -d "parse_mode=Markdown" \
+            -d "reply_markup={\"inline_keyboard\": [[{\"text\": \"🔗 View Sandbox Branch\", \"url\": \"$REPO_URL\"}]]}"
