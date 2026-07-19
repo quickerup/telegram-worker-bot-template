@@ -104,36 +104,6 @@ async function triggerWorkflow(env, repo, workflow, branch) {
 }
 
 
-
-async function handleNextDrivePicCallback(env, cb) {
-  await answerCallbackQuery(env, cb.id, 'Loading next random image...');
-
-  if (!env.GHPAT) {
-    console.error('[GitHub] Cannot dispatch drive broadcast workflow: GHPAT is not set');
-    if (cb.message?.chat?.id) {
-      await sendMessage(env, cb.message.chat.id, '❌ Unable to load the next random image: GHPAT is not set.');
-    }
-    return;
-  }
-
-  const res = await githubRequest(
-    env,
-    `/repos/${env.GITHUB_REPOSITORY}/actions/workflows/bot_endless_loop_drive_broadcast.yml/dispatches`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ ref: 'main' })
-    }
-  );
-
-  if (!res.ok) {
-    const body = await res.text();
-    console.error(`[GitHub] Failed to dispatch bot_endless_loop_drive_broadcast.yml: ${res.status} ${body}`);
-    if (cb.message?.chat?.id) {
-      await sendMessage(env, cb.message.chat.id, `❌ Failed to load the next random image (HTTP ${res.status}).`);
-    }
-  }
-}
-
 async function handleBranchDeleteCallback(env, cb) {
   const prefix = 'delete_branch:';
   const branch = cb.data.slice(prefix.length).trim();
@@ -561,9 +531,7 @@ export async function handleUpdate(update, env) {
     if (cb.message && cb.message.chat.id !== ALLOWED_CHAT_ID) return;
     
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
-    if (cb.data === 'next_drive_pic') {
-      await handleNextDrivePicCallback(env, cb);
-    } else if (cb.data && cb.data.startsWith('select_branch:')) {
+    if (cb.data && cb.data.startsWith('select_branch:')) {
       await handleBranchSelectionCallback(env, cb);
     } else if (cb.data && cb.data.startsWith('delete_branch:')) {
       await handleBranchDeleteCallback(env, cb);
