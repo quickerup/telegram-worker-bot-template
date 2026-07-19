@@ -1,0 +1,32 @@
+name: bot_endless_loop_drive_broadcast
+on:
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  scrape-and-post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull down public Google Drive folder HTML
+        env:
+          FOLDER_URL: https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn
+        run: |
+          curl -s -o folder.html "${FOLDER_URL}"
+
+      - name: Extract random file ID from HTML
+        env:
+          FILE_ID_LENGTH: 33
+        run: |
+          grep -oE '[a-zA-Z0-9]{33}' folder.html | shuf -n 1 > file_id.txt
+
+      - name: Read file ID from file
+        id: read_file_id
+        run: |
+          echo "::set-output name=file_id::$(cat file_id.txt)"
+
+      - name: Construct direct download URL
+        env:
+          FILE_ID: ${{ steps.read_file_id.outputs.file_id }}
+        run: |
+          echo "https://drive.google.com/uc?export=download&id=${FILE_ID}" > download_url.txt
+
