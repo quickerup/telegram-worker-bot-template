@@ -1,0 +1,88 @@
+name: Special Edition Broadcast
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-and-blast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send special edition media
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FOLDER_ID: ${{ secrets.ALT_DRIVE_FOLDER_ID }}
+        run: |
+          cat <<'NODE' > script.js
+          const folderId = process.env.FOLDER_ID || "1w7y-2Wl8wsKLy5c0ovZiD19h83x_Vq_z";
+          const repo = process.env.GITHUB_REPOSITORY;
+
+          function shuffle(items) {
+            return items
+              .map((value) => ({ value, sort: Math.random() }))
+              .sort((a, b) => a.sort - b.sort)
+              .map(({ value }) => value);
+          }
+
+          async function fetchDriveDocument(id) {
+            const url = `https://drive.google.com/uc?export=download&id=${id}`;
+            const response = await fetch(url, { redirect: "follow" });
+            const contentType = response.headers.get("content-type") || "";
+            if (!response.ok || contentType.startsWith("text/html")) {
+              console.warn(`Skipping ${id}: ${response.status} ${contentType || "unknown content type"}`);
+              return null;
+            }
+            return url;
+          }
+
+          async function sendTelegramDocument(id, documentUrl) {
+            const payload = {
+              chat_id: process.env.CHAT_ID,
+              document: documentUrl,
+              caption: "✨ *Special Edition: Alternate Drive Folder Media*",
+              parse_mode: "Markdown",
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: "🔗 View Target Source", url: `https://drive.google.com/file/d/${id}/view` },
+                  { text: "🔄 Back to Main", callback_data: `trig:${repo}:main_loop.yml:main` }
+                ]]
+              }
+            };
+
+            return fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendDocument`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+          }
+
+          async function run() {
+            const response = await fetch(`https://drive.google.com/drive/folders/${folderId}`);
+            const html = await response.text();
+            const candidateIds = shuffle([...new Set(html.match(/[a-zA-Z0-9_-]{25,}/g) || [])]);
+
+            if (!candidateIds.length) throw new Error("Could not parse any asset IDs from the special edition folder view.");
+            console.log(`Found ${candidateIds.length} candidate Drive asset IDs.`);
+
+            for (const id of candidateIds) {
+              const documentUrl = await fetchDriveDocument(id);
+              if (!documentUrl) continue;
+
+              const res = await sendTelegramDocument(id, documentUrl);
+              if (!res.ok) {
+                console.error("Telegram API rejected selected document:", await res.text());
+                continue;
+              }
+
+              console.log("Special edition payload pushed to Telegram.");
+              return;
+            }
+
+            throw new Error("No parsed special-folder IDs resolved to downloadable content.");
+          }
+
+          run().catch((err) => {
+            console.error("Special loop execution failed:", err);
+            process.exit(1);
+          });
+          NODE
+          node script.js

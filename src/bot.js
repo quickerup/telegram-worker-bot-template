@@ -618,6 +618,14 @@ export async function handleUpdate(update, env) {
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
     if (cb.data === 'next_drive_pic') {
       await handleNextDrivePicCallback(env, cb);
+    } else if (cb.data && cb.data.startsWith('/trigger ')) {
+      await answerCallbackQuery(env, cb.id, 'Triggering workflow...');
+      await commands.trigger(env, {
+        ...cb.message,
+        text: cb.data,
+        from: cb.from || cb.message?.from,
+        chat: cb.message.chat
+      });
     } else if (cb.data === 'trigger_loop') {
       await answerCallbackQuery(env, cb.id, 'Triggering loop workflow...');
       await commands.trigger(env, {
