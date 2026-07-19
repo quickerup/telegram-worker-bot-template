@@ -476,8 +476,40 @@ const commands = {
     await sendMessage(
       env,
       msg.chat.id,
-      'Commands:\n/start - greet\n/help - this message\n/trigger [repo] [workflow] [branch] - trigger a GitHub action\n/makeworkflow [repo] [description] - use AI to design and commit a new workflow\n/import [repo] <yaml> - import a premade workflow file\n\nAnything else you send gets echoed back.'
+      'Commands:\n/start - greet\n/help - this message\n/actions - list all workflows as buttons\n/trigger [repo] [workflow] [branch] - trigger a GitHub action\n/makeworkflow [repo] [description] - use AI to design and commit a new workflow\n/import [repo] <yaml> - import a premade workflow file\n\nAnything else you send gets echoed back.'
     );
+  },
+  actions: async (env, msg) => {
+    if (!env.GHPAT) {
+      return sendMessage(env, msg.chat.id, 'Please set GHPAT secret first.');
+    }
+    const repo = actionsRepo(env);
+    await sendMessage(env, msg.chat.id, `⏳ Fetching workflows from \`${repo}\`...`);
+
+    const res = await githubRequest(env, `/repos/${repo}/actions/workflows`);
+    if (!res.ok) {
+      return sendMessage(env, msg.chat.id, `❌ Failed to fetch workflows (HTTP ${res.status})`);
+    }
+    const { workflows = [] } = await res.json();
+    const active = workflows.filter(w => w.state === 'active');
+
+    if (active.length === 0) {
+      return sendMessage(env, msg.chat.id, 'No active workflows found.');
+    }
+
+    // Build one row per workflow: [Name ▶] [🗑]
+    const inline_keyboard = active.map(w => {
+      const file = w.path.split('/').pop();
+      return [
+        { text: `▶ ${w.name}`, callback_data: `wr:${w.id}` },
+        { text: '🗑', callback_data: `wd:${w.id}` }
+      ];
+    });
+
+    await sendMessage(env, msg.chat.id, '🗂 *Active Workflows* — tap ▶ to run, 🗑 to delete:', {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard }
+    });
   },
   trigger: async (env, msg) => {
     if (!env.GHPAT) {
