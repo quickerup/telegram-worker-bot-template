@@ -49,7 +49,7 @@ jobs:
                   caption: "❤️🤸🏻‍♀️ *You love this shit*",
                   parse_mode: "Markdown",
                   reply_markup: {
-                    inline_keyboard: [[{ text: "🔄 Next Image", callback_data: "trigger_image_loop" }]]
+                    inline_keyboard: [[{ text: "💦 More?", callback_data: "trigger_image_loop" }]]
                   }
                 };
                 
