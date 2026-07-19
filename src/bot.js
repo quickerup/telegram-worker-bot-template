@@ -484,29 +484,34 @@ const commands = {
       return sendMessage(env, msg.chat.id, 'Please set GHPAT secret first.');
     }
     const repo = actionsRepo(env);
-    await sendMessage(env, msg.chat.id, `⏳ Fetching workflows from \`${repo}\`...`);
 
     const res = await githubRequest(env, `/repos/${repo}/actions/workflows`);
     if (!res.ok) {
       return sendMessage(env, msg.chat.id, `❌ Failed to fetch workflows (HTTP ${res.status})`);
     }
     const { workflows = [] } = await res.json();
-    const active = workflows.filter(w => w.state === 'active');
 
-    if (active.length === 0) {
-      return sendMessage(env, msg.chat.id, 'No active workflows found.');
-    }
-
-    // Build one row per workflow: [Name ▶] [🗑]
-    const inline_keyboard = active.map(w => {
+    // Only show active workflows that can be manually triggered
+    // Check the workflow file content for workflow_dispatch trigger
+    const SKIP = ['notify_on_fail.yml', 'deploy.yml'];
+    const triggerable = workflows.filter(w => {
+      if (w.state !== 'active') return false;
       const file = w.path.split('/').pop();
-      return [
-        { text: `▶ ${w.name}`, callback_data: `wr:${w.id}` },
-        { text: '🗑', callback_data: `wd:${w.id}` }
-      ];
+      if (SKIP.includes(file)) return false;
+      return true;
     });
 
-    await sendMessage(env, msg.chat.id, '🗂 *Active Workflows* — tap ▶ to run, 🗑 to delete:', {
+    if (triggerable.length === 0) {
+      return sendMessage(env, msg.chat.id, 'No triggerable workflows found. Use /import or /makeworkflow to create one!');
+    }
+
+    // Build one row per workflow: [▶ Name] [🗑]
+    const inline_keyboard = triggerable.map(w => [
+      { text: `▶ ${w.name}`, callback_data: `wr:${w.id}` },
+      { text: '🗑', callback_data: `wd:${w.id}` }
+    ]);
+
+    await sendMessage(env, msg.chat.id, `🗂 *${triggerable.length} Workflow(s)* — tap ▶ to run, 🗑 to delete:`, {
       parse_mode: 'Markdown',
       reply_markup: { inline_keyboard }
     });
