@@ -1,0 +1,29 @@
+name: Notification Countdown Timer
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 0 * * *
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set Notification Countdown Timer
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TIMER_HOURS: 24
+        run: |
+          echo "Notification countdown timer set for $TIMER_HOURS hours"
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d '{"chat_id": "'${CHAT_ID}'", "text": "Notification countdown timer set for '$TIMER_HOURS' hours"}'
+      - name: Wait for Timer Expiration
+        run: |
+          sleep $TIMER_HOURS*h
+      - name: Send Notification
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MESSAGE: "Notification countdown timer expired"
+        run: |
+          curl -s -X POST "https
