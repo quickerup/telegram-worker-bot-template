@@ -328,9 +328,26 @@ async function handleWorkflowCallback(env, cb) {
   }
 }
 
-async function saveAndConfigureWorkflow(env, msg, repo, yaml) {
-  const shortTime = Date.now().toString(36);
-  const filename = `bot_${shortTime}.yml`;
+async function saveAndConfigureWorkflow(env, msg, repo, yaml, providedFilename) {
+  let filename = providedFilename;
+
+  // If no explicit filename was provided, try to extract one from the "name:" field in the YAML
+  if (!filename) {
+    const nameMatch = yaml.match(/^name:\s*['"]?([^'"\n]+)['"]?/m);
+    if (nameMatch) {
+      let slug = nameMatch[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      if (slug) {
+        filename = `${slug}.yml`;
+      }
+    }
+  }
+
+  // Final fallback if no name field exists
+  if (!filename) {
+    const shortTime = Date.now().toString(36);
+    filename = `bot_${shortTime}.yml`;
+  }
+
   const path = `.github/workflows/${filename}`;
 
   // Validate basic YAML structure before committing
@@ -536,16 +553,17 @@ const commands = {
     if (!env.GHPAT) {
       return sendMessage(env, msg.chat.id, "Please set GHPAT secret first.");
     }
-    const match = msg.text.trim().match(/^\/import\s+([\s\S]+)$/);
+    const match = msg.text.trim().match(/^\/import(?:\s+([a-zA-Z0-9_.-]+\.yml))?\s+([\s\S]+)$/);
     if (!match) {
-      return sendMessage(env, msg.chat.id, "Usage:\n/import <paste yaml here>");
+      return sendMessage(env, msg.chat.id, "Usage:\n/import [filename.yml]\n<paste yaml here>");
     }
     const repo = actionsRepo(env);
-    let yaml = match[1].trim();
+    const providedFilename = match[1];
+    let yaml = match[2].trim();
     if (yaml.startsWith("```")) {
       yaml = yaml.replace(/^```[a-z]*\n?/, "").replace(/\n```$/, "");
     }
-    await saveAndConfigureWorkflow(env, msg, repo, yaml);
+    await saveAndConfigureWorkflow(env, msg, repo, yaml, providedFilename);
   },
   makeworkflow: async (env, msg) => {
     console.log(`[Command] /makeworkflow from user ${msg.from.id}: ${msg.text}`);
