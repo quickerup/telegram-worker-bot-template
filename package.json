@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "check": "node --check src/index.js && node --check src/bot.js"
   },
   "devDependencies": {
     "wrangler": "^3.80.0"
