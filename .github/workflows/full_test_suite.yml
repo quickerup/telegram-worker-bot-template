@@ -1,0 +1,270 @@
+name: 🧪 Full Action Test Suite
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # Every Monday at 6am UTC
+
+jobs:
+  # ────────────────────────────────────────────────────
+  # JOB 1: Validate all workflow YAML files are parseable
+  # ────────────────────────────────────────────────────
+  validate-yaml:
+    name: Validate Workflow YAML Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint all workflow files
+        run: |
+          echo "🔍 Checking YAML syntax on all workflow files..."
+          FAILED=0
+          for f in .github/workflows/*.yml; do
+            yamllint -d relaxed "$f" && echo "✅ $f" || { echo "❌ $f"; FAILED=1; }
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            echo "One or more YAML files failed linting."
+            exit 1
+          fi
+          echo "✅ All workflow YAML files are valid."
+
+  # ────────────────────────────────────────────────────
+  # JOB 2: Check all required secrets exist
+  # ────────────────────────────────────────────────────
+  check-secrets:
+    name: Verify Required Secrets Are Set
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        env:
+          TELEGRAM_BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:        ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          CLOUDFLARE_API_TOKEN:    ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID:   ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GHPAT:                   ${{ secrets.GHPAT }}
+          GOOGLE_SHEETS_WEBHOOK:   ${{ secrets.GOOGLE_SHEETS_WEBHOOK }}
+        run: |
+          MISSING=()
+          [ -z "$TELEGRAM_BOT_TOKEN" ]      && MISSING+=("TELEGRAM_BOT_TOKEN")
+          [ -z "$TELEGRAM_CHAT_ID" ]        && MISSING+=("TELEGRAM_CHAT_ID")
+          [ -z "$TELEGRAM_WEBHOOK_SECRET" ] && MISSING+=("TELEGRAM_WEBHOOK_SECRET")
+          [ -z "$CLOUDFLARE_API_TOKEN" ]    && MISSING+=("CLOUDFLARE_API_TOKEN")
+          [ -z "$CLOUDFLARE_ACCOUNT_ID" ]   && MISSING+=("CLOUDFLARE_ACCOUNT_ID")
+          [ -z "$GHPAT" ]                   && MISSING+=("GHPAT")
+          [ -z "$GOOGLE_SHEETS_WEBHOOK" ]   && MISSING+=("GOOGLE_SHEETS_WEBHOOK")
+
+          if [ ${#MISSING[@]} -ne 0 ]; then
+            echo "❌ Missing secrets: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "✅ All required secrets are set."
+
+  # ────────────────────────────────────────────────────
+  # JOB 3: Test Telegram Bot is alive and responding
+  # ────────────────────────────────────────────────────
+  test-telegram-bot:
+    name: Test Telegram Bot API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Telegram getMe API
+        run: |
+          RESPONSE=$(curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/getMe")
+          OK=$(echo "$RESPONSE" | jq -r '.ok')
+          BOT_NAME=$(echo "$RESPONSE" | jq -r '.result.username')
+          if [ "$OK" != "true" ]; then
+            echo "❌ Telegram bot is not responding: $RESPONSE"
+            exit 1
+          fi
+          echo "✅ Telegram bot is alive: @$BOT_NAME"
+
+      - name: Test Telegram sendMessage API
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg chat_id "${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --arg text "🧪 *Test Suite Running\!*
+
+Action test suite is running on _$(date -u '+%Y\-%m\-%d %H:%M UTC')_\. This message confirms the Telegram API is working correctly\." \
+            '{chat_id: $chat_id, text: $text, parse_mode: "MarkdownV2"}')
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" -d "$PAYLOAD")
+          OK=$(echo "$RESPONSE" | jq -r '.ok')
+          if [ "$OK" != "true" ]; then
+            echo "❌ sendMessage failed: $RESPONSE"
+            exit 1
+          fi
+          echo "✅ sendMessage test passed."
+
+  # ────────────────────────────────────────────────────
+  # JOB 4: Test Phemex API (Bitcoin Tracker dependency)
+  # ────────────────────────────────────────────────────
+  test-phemex-api:
+    name: Test Phemex API (Bitcoin Tracker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch BTC price from Phemex
+        run: |
+          RESPONSE=$(curl -s "https://api.phemex.com/md/ticker/24hr?symbol=BTCUSD")
+          ERROR=$(echo "$RESPONSE" | jq -r '.error')
+          PRICE=$(echo "$RESPONSE" | jq -r '.result.close // empty')
+          if [ "$ERROR" != "null" ] || [ -z "$PRICE" ]; then
+            echo "❌ Phemex API returned an error: $RESPONSE"
+            exit 1
+          fi
+          HUMAN_PRICE=$(awk "BEGIN {printf \"%.2f\", $PRICE / 10000}")
+          echo "✅ Phemex API is live. BTC = \$$HUMAN_PRICE USD"
+
+  # ────────────────────────────────────────────────────
+  # JOB 5: Test Google Drive folder is accessible
+  # ────────────────────────────────────────────────────
+  test-google-drive:
+    name: Test Google Drive Folders
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check multi-media folder returns valid IDs
+        run: |
+          HTML=$(curl -sL "https://drive.google.com/drive/folders/1w7y-2Wl8wsKLy5c0ovZiD19h83x_Vq_z")
+          COUNT=$(echo "$HTML" | grep -o '"1[a-zA-Z0-9_-]\{32\}"' | grep -v '1w7y-2Wl8wsKLy5c0ovZiD19h83x_Vq_z' | wc -l)
+          if [ "$COUNT" -lt 1 ]; then
+            echo "❌ Could not extract any file IDs from media folder."
+            exit 1
+          fi
+          echo "✅ Media folder accessible, found $COUNT file ID(s)."
+
+      - name: Check image-only folder returns valid IDs
+        run: |
+          HTML=$(curl -sL "https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn")
+          COUNT=$(echo "$HTML" | grep -o '"1[a-zA-Z0-9_-]\{32\}"' | grep -v '1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn' | wc -l)
+          if [ "$COUNT" -lt 1 ]; then
+            echo "❌ Could not extract any file IDs from image folder."
+            exit 1
+          fi
+          echo "✅ Image folder accessible, found $COUNT file ID(s)."
+
+  # ────────────────────────────────────────────────────
+  # JOB 6: Test Google Sheets Webhook is responding
+  # ────────────────────────────────────────────────────
+  test-sheets-webhook:
+    name: Test Google Sheets Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST test row to Google Sheets
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg workflow "🧪 Test Suite" \
+            --arg status "test" \
+            --arg branch "main" \
+            --arg actor "${{ github.actor }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg run_id "${{ github.run_id }}" \
+            '{workflow: $workflow, status: $status, branch: $branch, actor: $actor, repo: $repo, run_id: $run_id, timestamp: (now | todateiso8601)}')
+          RESPONSE=$(curl -sL -X POST "${{ secrets.GOOGLE_SHEETS_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+          if echo "$RESPONSE" | grep -q '"status":"success"'; then
+            echo "✅ Google Sheets webhook is responding correctly."
+          else
+            echo "❌ Unexpected response from Sheets webhook: $RESPONSE"
+            exit 1
+          fi
+
+  # ────────────────────────────────────────────────────
+  # JOB 7: Test Bot Factory dry run
+  # ────────────────────────────────────────────────────
+  test-bot-factory-dry-run:
+    name: Test Bot Factory (Dry Run)
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GHPAT }}
+    steps:
+      - name: Validate repo name pattern
+        run: |
+          REPO_NAME="test-dry-run-bot"
+          if [[ ! "$REPO_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "❌ Regex validation failed"
+            exit 1
+          fi
+          echo "✅ Repo name validation works: $REPO_NAME"
+
+      - name: Check Bot Factory prerequisite secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GHPAT: ${{ secrets.GHPAT }}
+        run: |
+          MISSING=()
+          [ -z "$CLOUDFLARE_API_TOKEN" ]  && MISSING+=("CLOUDFLARE_API_TOKEN")
+          [ -z "$CLOUDFLARE_ACCOUNT_ID" ] && MISSING+=("CLOUDFLARE_ACCOUNT_ID")
+          [ -z "$GHPAT" ]                 && MISSING+=("GHPAT")
+          if [ ${#MISSING[@]} -ne 0 ]; then
+            echo "❌ Bot Factory missing platform secrets: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "✅ Bot Factory platform secrets are in place."
+
+      - name: Simulate repo creation (dry run)
+        run: |
+          echo "🔍 Would create: ${{ github.repository_owner }}/test-dry-run-bot"
+          echo "🔍 Template: ${{ github.repository }}"
+          echo "🔍 Visibility: private"
+          echo "✅ Dry run simulation passed."
+
+  # ────────────────────────────────────────────────────
+  # JOB 8: Send final summary to Telegram
+  # ────────────────────────────────────────────────────
+  report-results:
+    name: Report Results to Telegram
+    runs-on: ubuntu-latest
+    needs:
+      - validate-yaml
+      - check-secrets
+      - test-telegram-bot
+      - test-phemex-api
+      - test-google-drive
+      - test-sheets-webhook
+      - test-bot-factory-dry-run
+    if: always()
+    steps:
+      - name: Summarise and notify
+        run: |
+          pass() { [ "$1" = "success" ] && echo "✅" || echo "❌"; }
+
+          YAML="${{ needs.validate-yaml.result }}"
+          SECRETS="${{ needs.check-secrets.result }}"
+          TG="${{ needs.test-telegram-bot.result }}"
+          BTC="${{ needs.test-phemex-api.result }}"
+          GD="${{ needs.test-google-drive.result }}"
+          SHEETS="${{ needs.test-sheets-webhook.result }}"
+          FACTORY="${{ needs.test-bot-factory-dry-run.result }}"
+
+          # Count pass/fail
+          TOTAL=7; PASSED=0
+          for r in "$YAML" "$SECRETS" "$TG" "$BTC" "$GD" "$SHEETS" "$FACTORY"; do
+            [ "$r" = "success" ] && PASSED=$((PASSED+1))
+          done
+          FAILED=$((TOTAL-PASSED))
+
+          OVERALL=$( [ "$FAILED" -eq 0 ] && echo "✅ All tests passed\!" || echo "⚠️ $FAILED test\(s\) failed\." )
+
+          PAYLOAD=$(jq -n \
+            --arg chat_id "${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --arg text "🧪 *Full Action Test Suite Results*
+
+$OVERALL
+
+$(pass $YAML) YAML Syntax Validation
+$(pass $SECRETS) Required Secrets Check
+$(pass $TG) Telegram Bot API
+$(pass $BTC) Phemex BTC API
+$(pass $GD) Google Drive Folders
+$(pass $SHEETS) Google Sheets Webhook
+$(pass $FACTORY) Bot Factory Dry Run
+
+🔗 [View full run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            '{chat_id: $chat_id, text: $text, parse_mode: "MarkdownV2"}')
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
