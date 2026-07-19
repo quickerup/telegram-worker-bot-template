@@ -1,4 +1,3 @@
-.github/workflows/loop.yml
 name: Multi-Media Endless Loop Broadcast
 on:
   workflow_dispatch:
