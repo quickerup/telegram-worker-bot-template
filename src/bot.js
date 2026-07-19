@@ -475,6 +475,126 @@ async function saveAndConfigureWorkflow(env, msg, repo, yaml, providedFilename) 
   );
 }
 
+async function gatherWorkflowContext(env, repo) {
+  const context = { repo, existingWorkflows: [], existingSecrets: [] };
+
+  const [wfRes, secRes] = await Promise.all([
+    githubRequest(env, `/repos/${repo}/actions/workflows`).catch((e) => {
+      console.warn('[Context] Workflow list request failed:', e.message);
+      return null;
+    }),
+    githubRequest(env, `/repos/${repo}/actions/secrets`).catch((e) => {
+      console.warn('[Context] Secret list request failed:', e.message);
+      return null;
+    })
+  ]);
+
+  if (wfRes && wfRes.ok) {
+    const { workflows = [] } = await wfRes.json();
+    context.existingWorkflows = workflows.map((w) => w.path.split('/').pop());
+  }
+
+  if (secRes && secRes.ok) {
+    const { secrets = [] } = await secRes.json();
+    context.existingSecrets = secrets.map((s) => s.name);
+  }
+
+  return context;
+}
+
+function buildWorkflowSystemPrompt(context) {
+  const { repo, existingWorkflows, existingSecrets } = context;
+
+  const workflowList = existingWorkflows.length
+    ? existingWorkflows.map((w) => '- ' + w).join('\n')
+    : '(none found — this may be a fresh repo)';
+
+  const secretList = existingSecrets.length
+    ? existingSecrets.map((s) => '- ' + s).join('\n')
+    : '(none found)';
+
+  return [
+    'You are an expert GitHub Actions engineer writing a workflow for a specific real repo. Return ONLY raw valid YAML — no markdown fences, no commentary before or after. Your entire response is pasted directly into a .yml file.',
+    '',
+    'TARGET REPO: ' + repo,
+    '',
+    "WORKFLOWS ALREADY IN THIS REPO (don't duplicate one of these — if the request overlaps an existing workflow's purpose, extend the concept under a clearly different name instead):",
+    workflowList,
+    '',
+    'SECRETS ALREADY AVAILABLE IN THIS REPO (reference these directly via ${{ secrets.NAME }} — do not invent a secret name that is not in this list unless the request is explicitly about creating/seeding a new one):',
+    secretList,
+    '',
+    'REQUIRED TOP-LEVEL STRUCTURE — follow exactly, no exceptions:',
+    'name: <workflow name, must not collide with any existing workflow listed above>',
+    'on: <trigger>',
+    'jobs:',
+    '  <job-id>:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: <step name>',
+    '        run: <command>',
+    '',
+    'RULES: "on" and "jobs" MUST be top-level keys. "steps" MUST be nested inside a job under "jobs". NEVER place "steps" at the top level. Write the trigger key as unquoted `on:` — never `"on":` or `On:`.',
+    '',
+    'ALWAYS include workflow_dispatch as a trigger alongside any other triggers, so the workflow can always be fired manually.',
+    '',
+    'WORKED EXAMPLE — a complete, valid workflow showing correct trigger syntax (including schedule/cron), secret usage, and the required failure-handling pattern together:',
+    '',
+    'name: Example Scheduled Task',
+    'on:',
+    '  workflow_dispatch:',
+    '  schedule:',
+    "    - cron: '0 * * * *'",
+    'jobs:',
+    '  run-task:',
+    '    runs-on: ubuntu-latest',
+    '    permissions:',
+    '      issues: write',
+    '    steps:',
+    '      - name: Do the actual work',
+    '        env:',
+    '          API_KEY: ${{ secrets.SOME_API_KEY }}',
+    '        run: |',
+    '          curl -s "https://api.example.com/data" -H "Authorization: Bearer $API_KEY"',
+    '',
+    '      - name: Notify Telegram on failure',
+    '        if: failure()',
+    '        env:',
+    '          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}',
+    '          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}',
+    '        run: |',
+    '          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \\',
+    '            -H "Content-Type: application/json" \\',
+    '            -d "{\\"chat_id\\": \\"${CHAT_ID}\\", \\"text\\": \\"❌ Workflow failed: ${{ github.workflow }}\\"}"',
+    '',
+    '      - name: Create issue on failure',
+    '        if: failure()',
+    '        env:',
+    '          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
+    '        run: |',
+    '          gh issue create \\',
+    '            --repo "${{ github.repository }}" \\',
+    '            --title "🚨 ${{ github.workflow }} failed" \\',
+    '            --body "Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"',
+    '',
+    'ALWAYS:',
+    "- Define every env var in the specific step's own env: block before it's used — don't assume a var from one step is visible in another.",
+    '- TELEGRAM_WORKER_URL (if listed above) is a webhook receiver — POSTing to it will NOT send a Telegram message. To message the user, call the Telegram Bot API directly, exactly as shown in the worked example.',
+    '- If any job in this workflow can fail and no existing workflow listed above already notifies on failure repo-wide, add `issues: write` permissions and a final `if: failure()` step using `gh issue create` (see worked example). If one already exists, do not add a second one.',
+    '',
+    "CONDITIONAL — apply ONLY if relevant to the request, otherwise omit entirely, don't add machinery 'just in case':",
+    '1. Cross-repo file transfer: only if this workflow copies files into a different repo — use cpina/github-action-push-to-another-repository, never raw git commands.',
+    '2. New repo/worker provisioning: only if the request implies spinning up a new bot repo — update the wrangler.toml name field to something unique, seed TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID via the GitHub API, and create the repo itself via the GitHub API (curl).',
+    '',
+    'SELF-CHECK before responding — silently confirm all of these and fix anything that fails without narrating the fix, just output the corrected YAML:',
+    '1. Output starts with `name:` — no backticks, no fences, nothing before or after the YAML.',
+    '2. `on:` and `jobs:` are top-level keys; `steps:` is nested under a job, never top-level.',
+    '3. Every ${{ secrets.X }} reference is either in the secrets list above or is a secret this request is explicitly about creating.',
+    '4. The chosen `name:` does not collide with any workflow listed above.',
+    '5. Failure handling is present unless an existing workflow already covers it.'
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------------
 // Add your own commands here. Each key is a /command (no slash),
 // value is an async handler that receives (env, message).
@@ -581,6 +701,8 @@ const commands = {
     await sendMessage(env, msg.chat.id, `🤖 Asking AI to design workflow for \`${repo}\`...`);
 
     try {
+      const context = await gatherWorkflowContext(env, repo);
+
       const aiRes = await fetch(
         `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
         {
@@ -590,45 +712,11 @@ const commands = {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
+            max_tokens: 2048,
             messages: [
               {
                 role: 'system',
-                content: [
-                  'You are an expert GitHub Actions engineer. Return ONLY raw valid YAML for GitHub Actions. No markdown fences, no commentary. Output ONLY the YAML.',
-                  '',
-                  'REQUIRED TOP-LEVEL STRUCTURE — follow exactly, no exceptions:',
-                  'name: <workflow name>',
-                  'on: <trigger>',
-                  'jobs:',
-                  '  <job-id>:',
-                  '    runs-on: ubuntu-latest',
-                  '    steps:',
-                  '      - name: <step name>',
-                  '        run: <command>',
-                  '',
-                  'RULES: "on" and "jobs" MUST be top-level keys. "steps" MUST be nested inside a job under "jobs". NEVER place "steps" at the top level.',
-                  'ALWAYS include workflow_dispatch as a trigger alongside any other triggers (e.g. workflow_run, push, schedule), so the workflow can always be manually fired:',
-                  'on:',
-                  '  workflow_dispatch:',
-                  '  workflow_run:   # or push, schedule, etc',
-                  '    ...',
-                  'ALWAYS create a GitHub issue if any job in the workflow fails. Add `issues: write` permissions and a final job or step that runs on failure with `if: failure()` or `if: ${{ failure() }}` and uses the GitHub CLI or API to create a new issue for that failed run.',
-                  '',
-                  'ADDITIONAL RULES:',
-                  '1. File Transfer: Use cpina/github-action-push-to-another-repository, not raw git commands.',
-                  '2. Wrangler Isolation: Always update wrangler.toml name field in target repos.',
-                  '3. Secrets: Seed TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID into target repos.',
-                  '4. Repository Creation: Use GitHub API via curl.',
-                  '5. Environment Variables: Define all env vars in each step env: block before use.',
-                  '6. Worker URL: TELEGRAM_WORKER_URL is a Telegram webhook receiver — do NOT POST messages to it directly. It will not send Telegram messages.',
-                  '7. Sending Telegram Messages from a workflow: Use the Telegram Bot API directly. Example step:',
-                  '   env:',
-                  '     BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}',
-                  '   run: |',
-                  '     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \\',
-                  '       -H "Content-Type: application/json" \\',
-                  '       -d \'{"chat_id": ${{ secrets.TELEGRAM_CHAT_ID }}, "text": "your message here"}\'',
-                ].join('\n')
+                content: buildWorkflowSystemPrompt(context)
               },
               { role: 'user', content: prompt }
             ]
