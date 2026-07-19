@@ -39,6 +39,16 @@ function branchContextKey(chatId) {
   return `branch-context:${chatId}`;
 }
 
+function encodeBranchRefPath(branch) {
+  return branch.split('/').map(encodeURIComponent).join('/');
+}
+
+async function deleteRemoteBranch(env, repo, branch) {
+  return githubRequest(env, `/repos/${repo}/git/refs/heads/${encodeBranchRefPath(branch)}`, {
+    method: 'DELETE'
+  });
+}
+
 async function getSelectedBranch(env, chatId) {
   if (!env.BRANCH_CONTEXT_KV) {
     return undefined;
@@ -91,6 +101,41 @@ async function triggerWorkflow(env, repo, workflow, branch) {
   }
 
   return { ok: false, message: `❌ Failed to trigger (HTTP ${res.status}):\n${await res.text()}` };
+}
+
+
+async function handleBranchDeleteCallback(env, cb) {
+  const prefix = 'delete_branch:';
+  const branch = cb.data.slice(prefix.length).trim();
+
+  if (!branch || !SAFE_BRANCH_PATTERN.test(branch)) {
+    await answerCallbackQuery(env, cb.id, 'Invalid branch delete request');
+    return;
+  }
+
+  if (!env.GHPAT) {
+    await answerCallbackQuery(env, cb.id, 'GHPAT is not set');
+    return;
+  }
+
+  await answerCallbackQuery(env, cb.id, `Deleting ${branch}...`);
+
+  const repo = actionsRepo(env);
+  const deleteRes = await deleteRemoteBranch(env, repo, branch);
+  const chatId = cb.message?.chat?.id;
+
+  if (!deleteRes.ok) {
+    const body = await deleteRes.text();
+    console.error(`[GitHub] Failed to delete branch ${branch} from ${repo}: ${deleteRes.status} ${body}`);
+    if (chatId) {
+      await sendMessage(env, chatId, `❌ Failed to delete remote branch: ${branch} (HTTP ${deleteRes.status})`);
+    }
+    return;
+  }
+
+  if (chatId) {
+    await sendMessage(env, chatId, `💥 Successfully deleted remote branch: ${branch}`);
+  }
 }
 
 async function handleBranchSelectionCallback(env, cb) {
@@ -488,6 +533,9 @@ export async function handleUpdate(update, env) {
     console.log(`[Telegram] Received callback_query: ${cb.data}`);
     if (cb.data && cb.data.startsWith('select_branch:')) {
       await handleBranchSelectionCallback(env, cb);
+    } else if (cb.data && cb.data.startsWith('delete_branch:')) {
+      if (!cb.message || cb.message.chat.id !== ALLOWED_CHAT_ID) return;
+      await handleBranchDeleteCallback(env, cb);
     } else if (cb.data && cb.data.startsWith('trig:')) {
       const match = cb.data.match(/^trig:([^:]+\/[^:]+):([^:]+)(?::(.+))?$/);
       if (!match) {
