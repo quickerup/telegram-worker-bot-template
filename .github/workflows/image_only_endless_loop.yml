@@ -46,7 +46,7 @@ jobs:
                 const payload = {
                   chat_id: process.env.CHAT_ID,
                   photo: downloadUrl,
-                  caption: "📸 *Random Image*",
+                  caption: "❤️🤸🏻‍♀️ *You love this shit*",
                   parse_mode: "Markdown",
                   reply_markup: {
                     inline_keyboard: [[{ text: "🔄 Next Image", callback_data: "trigger_image_loop" }]]
