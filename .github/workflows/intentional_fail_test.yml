@@ -1,0 +1,13 @@
+name: Intentional Fail Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fail-on-purpose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: This step always fails
+        run: |
+          echo "💥 Deliberate failure to test the Google Sheets logger!"
+          exit 1
