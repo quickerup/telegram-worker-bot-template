@@ -1,0 +1,30 @@
+name: Current Time and Hash
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+jobs:
+  current-time:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Get Current Time
+        env:
+          TIME: $(date +"%Y-%m-%d %H:%M:%S")
+          HASH: $(echo "$TIME" | sha256sum | cut -d' ' -f1)
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d '{"chat_id": "'${CHAT_ID}'", "text": "Current Time: '${TIME}'\nHash: '${HASH}'"}'
+      - name: Create Issue on Failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          curl -s -X POST \
+          https://api.github.com/repos/${
