@@ -1,0 +1,20 @@
+name: bot_endless_loop_drive_broadcast.yml
+on:
+  workflow_dispatch:
+    types: [workflow_dispatch]
+jobs:
+  broadcast:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+    - name: Scrape Google Drive
+      env:
+        DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/1kZXHNWNh-e3OVfiw0K8DyE_XLGV8-Jfn
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        FILE_IDS=$(curl -s -L "${DRIVE_FOLDER_URL}" | grep -oE '[a-zA-Z0-9_]{33}')
+        SELECTED_FILE_ID=$(echo "${FILE_IDS}" | shuf -n 1)
+        IMAGE_URL="https://drive.google.com/uc?export=download&id=${SELECTED_FILE_ID}"
+        REPLY_MARKUP='{"inline_keyboard":[[{"text":"Original Link","url":"'${IMAGE_URL}'"},{"text":" Next Random Image","callback_data":"/trigger quickerup/telegram-worker-bot-template bot_endless_loop_drive_broadcast.yml
