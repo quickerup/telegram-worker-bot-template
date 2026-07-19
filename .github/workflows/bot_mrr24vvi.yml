@@ -1,0 +1,33 @@
+name: Network Traceroute
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+jobs:
+  traceroute:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Extract Domain
+        env:
+          WORKER_URL: ${{ secrets.TELEGRAM_WORKER_URL }}
+        run: |
+          echo "Extracting domain from $WORKER_URL"
+          DOMAIN=$(echo "$WORKER_URL" | cut -d '/' -f 3)
+          echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
+      - name: Run Traceroute
+        env:
+          DOMAIN: ${{ env.DOMAIN }}
+        run: |
+          echo "Running traceroute to $DOMAIN and api.telegram.org"
+          traceroute -n -m 15 $DOMAIN > $DOMAIN.tr
+          traceroute -n -m 15 api.telegram.org > api.telegram.org.tr
+      - name: Send Traceroute Results
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DOMAIN: ${{ env.DOMAIN }}
+        run: |
+          curl -s -
