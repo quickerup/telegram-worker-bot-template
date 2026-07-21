@@ -1,0 +1,32 @@
+name: Telegram Worker Bot Timestamp
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+jobs:
+  get-timestamp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get current timestamp
+        run: |
+          echo "Current timestamp: $(date +%s)"
+
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${CHAT_ID}\", \"text\": \"❌ Workflow failed: ${{ github.workflow }}\"}"
+
+      - name: Create issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GHPAT }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "🚨 ${{ github.workflow }} failed" \
+            --body "Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
