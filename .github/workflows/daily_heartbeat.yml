@@ -1,0 +1,14 @@
+name: Daily Heartbeat
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 13 * * *'
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Telegram
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="⏰ Daily heartbeat: still alive at $(date -u)"
