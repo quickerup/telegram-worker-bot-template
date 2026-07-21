@@ -1,9 +1,0 @@
-name: Sanity Check
-on:
-  workflow_dispatch:
-jobs:
-  ping:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Say hello
-        run: echo "Bot pipeline works! $(date)"
