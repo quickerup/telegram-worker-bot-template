@@ -1,0 +1,12 @@
+name: Matrix Test
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20]
+    steps:
+      - name: Show node target
+        run: echo "Testing against Node ${{ matrix.node }}"
